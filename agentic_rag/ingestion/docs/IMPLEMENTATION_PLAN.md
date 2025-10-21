@@ -23,13 +23,13 @@ Create async FastAPI endpoint with pipeline-parallel architecture using PyTorch 
   2. Conversion-less pipeline: chunking → embedding → writing (documents go directly to embedding queue)
 - **Process Architecture** (2 long-running worker processes):
   1. **Main FastAPI Process**: Handles API requests, enqueues individual documents to conversion queue
-  2. **Conversion Worker Process**: Reads individual documents from conversion queue, dynamically batches them (TO BE IMPLEMENTED: page-based batching), processes batch sequentially through converter, outputs individual chunks to embedding queue
-  3. **Embedding Worker Process**: Single process that reads individual chunks from embedding queue, dynamically batches them (TO BE IMPLEMENTED: token-based batching), calls embedder (has internal GPU batching)
+  2. **Conversion Worker Process**: Reads individual documents from conversion queue, dynamically batches them (✅ page-based batching), processes batch sequentially through converter, outputs individual chunks to embedding queue
+  3. **Embedding Worker Process**: Single process that reads individual chunks from embedding queue, dynamically batches them (✅ token-based batching), calls embedder (has internal GPU batching)
 - NO job tracking, NO progress tracking in prototype
 - Multiprocessing provides process isolation for black-box converter and embedder components
 - User-configured `conversion_worker_pool_size` parameter is propagated to mock converter (will be used by actual converter implementation for internal parallelism)
 
-### 3. Dynamic Batching System (Worker Processes)
+### 3. Dynamic Batching System (Worker Processes) (✅ IMPLEMENTED)
 - **Conversion Batching** (by page count):
   - Main process enqueues individual documents to conversion queue
   - Conversion worker batching logic:
@@ -53,16 +53,19 @@ Create async FastAPI endpoint with pipeline-parallel architecture using PyTorch 
     4. Process the collected batch
     5. Wait for batch processing to complete before collecting next batch
   - Processes batch through embedder (which has internal GPU batching)
-  - Uses basic whitespace tokenizer for token counting per chunk (no HuggingFace dependencies)
+  - Uses basic whitespace tokenizer (`simple_tokenize()` function) for token counting per chunk (no HuggingFace dependencies)
   - Writes embedded documents to storage
 
-### 4. Mock Component Execution
-- Mock delays from ASSUMPTIONS.md:
-  - Marker: 1s/page (GPU-accelerated)
-  - MarkItDown: 0.5s/page (CPU-only)
-  - Embedder: 1ms/chunk (GPU-accelerated)
-- Simulate batching behavior with delays proportional to batch size
-- Track which components use GPU (Marker, Embedder) vs CPU (MarkItDown)
+### 4. Mock Component Execution (✅ IMPLEMENTED)
+- Mock delays based on ASSUMPTIONS.md:
+  - MARKER converter: 1s/page (GPU-accelerated)
+  - MARKITDOWN converter: 0.5s/page (CPU-only)
+  - Default converter: 0.1s/page
+  - Embedder: 0.01s/batch (simulates GPU batch processing)
+  - Chunker: 0.01s/call (creates 3 chunks per document)
+  - Writer: 0.001s/call
+- Mock components located in `api/mocks/` directory
+- Component instantiation based on component name in metadata
 - Single GPU can handle both converter and embedder workers in parallel
 - Pipeline parallelism: While embedder processes chunks from job N, converter can process documents from job N+1
 
@@ -71,29 +74,69 @@ Create async FastAPI endpoint with pipeline-parallel architecture using PyTorch 
 - Extract page count for processing estimation
 - Cleanup temp files post-processing
 
-### 6. Data Models
-- JobSubmitRequest: files, components, batch_config
-- JobSubmitResponse: job_id, status, conversion_queue_position, embedding_queue_position
-- JobStatusResponse: job_id, status, conversion_progress, embedding_progress, result/error
-- BatchConfig: conversion_batch_page_limit, conversion_worker_pool_size, conversion_batch_wait_time, embedding_batch_token_limit, embedding_batch_wait_time
-- ConversionBatch: job_id, documents (with page counts), total_pages
-- EmbeddingBatch: job_id, chunks (with token counts), total_tokens
+### 6. Data Models (Actual Implementation)
+**Configuration Models:**
+- `BatchConfig`: Configuration loaded from environment variables (prefix `AGENTIC_RAG_`)
+  - `conversion_batch_page_limit`: int (default: 100)
+  - `conversion_worker_pool_size`: int (default: 4)
+  - `conversion_batch_wait_time`: float (default: 0.1)
+  - `embedding_batch_token_limit`: int (default: 10000)
+  - `embedding_batch_wait_time`: float (default: 0.01)
+
+**API Request/Response Models:**
+- `IngestRequest`:
+  - `components`: Dict[str, Any] (Haystack components config)
+- `IngestResponse`:
+  - `message`: str
+  - `files_received`: int
+
+**Queue Item Models:**
+- `DocumentItem`:
+  - `content_id`: str
+  - `filename`: str
+  - `page_count`: int
+- `ChunkItem`:
+  - `text`: str
+  - `token_count`: int
+  - `metadata`: Dict[str, Any]
+
+**Batch Models (used internally by workers):**
+- `ConversionBatch`:
+  - `documents`: List[DocumentItem]
+  - `total_pages`: int
+  - `components_config`: Dict[str, Any]
+- `EmbeddingBatch`:
+  - `chunks`: List[ChunkItem]
+  - `total_tokens`: int
+  - `components_config`: Dict[str, Any]
+
+**Note:** No job tracking models (JobSubmitResponse, JobStatusResponse) in prototype - fire-and-forget design.
 
 ## File Structure
 ```
-agentic_rag/
+agentic_rag/ingestion/
 ├── api/
-│   ├── app.py
+│   ├── __init__.py (exports FastAPI app)
+│   ├── app.py (FastAPI application with lifespan, all endpoints defined here)
 │   ├── models.py (Pydantic models)
-│   └── routes/
-│       └── ingest.py
+│   └── mocks/
+│       ├── __init__.py
+│       ├── mock_converter.py
+│       ├── mock_chunker.py
+│       ├── mock_embedder.py
+│       └── mock_writer.py
 ├── core/
-│   ├── pipeline_queues.py (conversion + embedding queues)
-│   ├── converter_worker.py (conversion worker)
-│   ├── embedder_worker.py (embedding worker)
-│   └── batching.py (dynamic batching logic for both stages)
-└── services/
-    └── mock_executor.py (mock component delays)
+│   ├── __init__.py
+│   ├── pipeline_queues.py (dual queue system with PyTorch multiprocessing)
+│   ├── converter_worker.py (conversion worker with embedded batching logic)
+│   └── embedder_worker.py (embedding worker with embedded batching logic)
+├── cli.py (CLI entry point for starting server)
+├── demos/
+│   ├── __init__.py
+│   ├── demo_api_endpoint.py (test script for API)
+│   └── demo_mock_pipeline.py
+└── docs/
+    └── IMPLEMENTATION_PLAN.md
 ```
 
 ## Implementation Steps
@@ -104,10 +147,11 @@ agentic_rag/
    - Conversion worker process (reads individual documents, batches and processes sequentially)
    - Embedding worker process (reads individual chunks, batches and processes sequentially)
 4. ✅ Update API endpoint (simple submit, no job tracking for prototype)
-5. Implement dynamic batching in worker processes:
-   - Page-based batching for conversion worker (collect documents until page limit reached)
-   - Token-based batching for embedding worker (collect chunks until token limit reached, with basic whitespace tokenizer)
-6. Manual testing with logs (verify batching and pipeline parallelism)
+5. ✅ Implement dynamic batching in worker processes:
+   - ✅ Page-based batching for conversion worker (collect documents until page limit reached)
+   - ✅ Token-based batching for embedding worker (collect chunks until token limit reached, with basic whitespace tokenizer)
+6. ✅ Manual testing with logs (verify batching and pipeline parallelism)
+   - Demo script created: `demos/demo_api_endpoint.py`
 
 ## Dynamic Batching Logic
 
