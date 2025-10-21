@@ -18,6 +18,7 @@ class MockConverter:
         self,
         delay_per_item: float = 0.0,
         batch_size: Optional[int] = None,
+        pool_size: Optional[int] = None,
         **kwargs: Any,
     ) -> None:
         """Initialize the mock converter.
@@ -25,14 +26,17 @@ class MockConverter:
         Args:
             delay_per_item: Delay in seconds per item to simulate processing time (default: 0.0)
             batch_size: Process items in batches of this size (default: None, process all at once)
+            pool_size: Number of workers for internal parallelism (for real converters like Marker)
             **kwargs: Other parameters (ignored)
         """
         self.delay_per_item = delay_per_item
         self.batch_size = batch_size
+        self.pool_size = pool_size
         logger.info(
-            "MockConverter initialized with delay_per_item=%.3fs, batch_size=%s",
+            "MockConverter initialized with delay_per_item=%.3fs, batch_size=%s, pool_size=%s",
             delay_per_item,
             batch_size,
+            pool_size,
         )
 
     def run(

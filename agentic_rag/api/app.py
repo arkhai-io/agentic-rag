@@ -71,11 +71,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             pipeline_queues.conversion_queue,
             pipeline_queues.embedding_queue,
             component_names,
+            batch_config.conversion_batch_page_limit,
+            batch_config.conversion_batch_wait_time,
         ),
         name="ConversionWorker",
     )
     conversion_worker_process.start()
-    logger.info("Conversion worker process started (PID: %d)", conversion_worker_process.pid)
+    logger.info(
+        "Conversion worker process started (PID: %d)", conversion_worker_process.pid
+    )
 
     logger.info("Starting embedding worker process...")
     embedding_worker_process = mp.Process(
@@ -83,12 +87,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         args=(
             pipeline_queues.embedding_queue,
             component_names,
-            32,  # Fixed batch size for now (will be replaced with dynamic batching)
+            batch_config.embedding_batch_token_limit,
+            batch_config.embedding_batch_wait_time,
         ),
         name="EmbeddingWorker",
     )
     embedding_worker_process.start()
-    logger.info("Embedding worker process started (PID: %d)", embedding_worker_process.pid)
+    logger.info(
+        "Embedding worker process started (PID: %d)", embedding_worker_process.pid
+    )
 
     yield
 
@@ -140,8 +147,6 @@ async def ingest_papers(
     Returns:
         IngestResponse with submission confirmation
     """
-    global pipeline_queues
-
     if pipeline_queues is None:
         raise HTTPException(status_code=500, detail="Pipeline queues not initialized")
 

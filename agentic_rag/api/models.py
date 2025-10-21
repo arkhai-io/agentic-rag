@@ -22,10 +22,20 @@ class BatchConfig(BaseSettings):
         gt=0,
         description="Number of workers in conversion pool for parallel document processing",
     )
+    conversion_batch_wait_time: float = Field(
+        default=0.1,
+        gt=0,
+        description="Minimum time (seconds) to wait before processing a conversion batch (allows queue to accumulate)",
+    )
     embedding_batch_token_limit: int = Field(
         default=10000,
         gt=0,
         description="Maximum number of tokens per embedding batch (dynamic batching by token count)",
+    )
+    embedding_batch_wait_time: float = Field(
+        default=0.01,
+        gt=0,
+        description="Minimum time (seconds) to wait before processing an embedding batch (allows queue to accumulate)",
     )
 
     class Config:
