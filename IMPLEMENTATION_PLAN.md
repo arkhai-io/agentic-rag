@@ -88,10 +88,10 @@ agentic_rag/
 3. ✅ Set up background worker processes:
    - Conversion worker process (reads individual documents, manages persistent multiprocessing.Pool)
    - Embedding worker process (reads individual chunks, calls embedder)
-4. Implement dynamic batching in worker processes:
+4. ✅ Update API endpoint (simple submit, no job tracking for prototype)
+5. Implement dynamic batching in worker processes:
    - Page-based batching for conversion worker (collect documents until page limit reached)
    - Token-based batching for embedding worker (collect chunks until token limit reached, with basic whitespace tokenizer)
-5. Update API endpoint (simple submit, no job tracking for prototype)
 6. Manual testing with logs (verify batching and pipeline parallelism)
 
 ## Dynamic Batching Logic

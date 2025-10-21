@@ -3,10 +3,14 @@
 from typing import Any, Dict, List
 
 from pydantic import BaseModel, Field
+from pydantic_settings import BaseSettings
 
 
-class BatchConfig(BaseModel):
-    """Configuration for dynamic batching in conversion and embedding stages."""
+class BatchConfig(BaseSettings):
+    """Configuration for dynamic batching in conversion and embedding stages.
+
+    Set via environment variables or CLI args, not per-request.
+    """
 
     conversion_batch_page_limit: int = Field(
         default=100,
@@ -23,6 +27,9 @@ class BatchConfig(BaseModel):
         gt=0,
         description="Maximum number of tokens per embedding batch (dynamic batching by token count)",
     )
+
+    class Config:
+        env_prefix = "AGENTIC_RAG_"
 
 
 class DocumentItem(BaseModel):
