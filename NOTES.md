@@ -92,15 +92,15 @@ The `MarkerPDFToDocument` component processes PDFs sequentially (one-by-one loop
 - Current v1.0+ doesn't expose batch processing in Python API
 - CLI batch processing uses shell scripts, not exposed Python functions
 
-### Recommendation for MVP
+### Recommendation for initial prototype
 **Keep current sequential implementation** because:
 1. Mock execution mode doesn't benefit from real batching
 2. Simulated delays (1s/page) work identically whether sequential or parallel
-3. Avoids complexity that doesn't serve MVP goals
+3. Avoids complexity that doesn't serve initial prototype goals
 4. Future refactor possible when real execution needed
 
 ### Production Considerations
-For real production use (post-MVP):
+For real production use (post-initial prototype):
 - **If throughput critical**: Implement Option 2 with careful VRAM management
 - **If simplicity preferred**: Use Option 1 with file-based batch CLI
 - **If uncertain**: Monitor Marker library updates for native batch API

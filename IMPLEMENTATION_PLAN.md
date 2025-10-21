@@ -34,7 +34,7 @@ Create async FastAPI endpoint with pipeline-parallel architecture using PyTorch 
   - Conversion consumer process distributes documents in batch to pool workers for parallel processing
   - Track per-document page counts for accurate batching
 - **Embedding Batching** (by token count):
-  - Main process uses HuggingFace tokenizer for accurate token counting per chunk
+  - Main process uses basic whitespace tokenizer for token counting per chunk (no HuggingFace dependencies)
   - Accumulates chunks until token count reaches user's `embedding_batch_token_limit`
   - Enqueues ready-to-process batches to embedding queue
   - Single embedding worker consumes batches and passes to embedder (which handles GPU batching internally)
@@ -88,7 +88,7 @@ agentic_rag/
 2. Build dual pipeline queues with PyTorch multiprocessing.Queue (conversion + embedding)
 3. Implement dynamic batching system in main process:
    - Page-based batching for conversion (batches enqueued ready-to-process)
-   - Token-based batching for embedding (batches enqueued ready-to-process, with HuggingFace tokenizer)
+   - Token-based batching for embedding (batches enqueued ready-to-process, with basic whitespace tokenizer)
 4. Create mock executor with simulated delays for both stages
 5. Set up background worker processes:
    - Conversion consumer process (reads from conversion queue, manages persistent multiprocessing.Pool)
@@ -105,7 +105,7 @@ agentic_rag/
 - Track progress: pages processed / total pages
 
 ### Embedding Stage
-- Use HuggingFace tokenizer for accurate chunk token counting
+- Mock tokenizer by using a basic implementation whitespace-based tokenizer, don't load full HF tokenizer for initial prototype
 - Accumulate chunks until total token count reaches `embedding_batch_token_limit`
 - Process batch through embedder (simulated delay: 1ms/chunk on GPU)
 - Output embeddings to results
@@ -125,7 +125,6 @@ agentic_rag/
 - Page limit enforcement for conversion batching
 - Token limit enforcement for embedding batching
 - Worker pool size configuration
-- Invalid batch config handling (all config parameters)
-- Progress tracking accuracy for both stages
 - Pipeline coordination (converter produces while embedder consumes)
-- GPU vs CPU fallback behavior
+- Happy path only, don't test failure/retry logic for initial prototype
+- Don't write tests, rely on logs to determine correctness of batching and parallelism

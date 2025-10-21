@@ -1,4 +1,4 @@
-# Implementation Assumptions for 1-Day MVP
+# Implementation Assumptions for 1-Day initial prototype
 
 ## Key Simplifications
 
@@ -8,7 +8,7 @@
 
 3. **No VRAM management** - User responsible for configuring batch sizes to avoid OOM. Single GPU can handle both conversion and embedding workers in parallel.
 
-4. **Actual tokenizer** - Use HuggingFace tokenizer for accurate token counting in embedding dynamic batching.
+4. **Basic whitespace tokenizer** - Use simple whitespace-based tokenizer for token counting in embedding dynamic batching (no HuggingFace dependencies for initial prototype).
 
 5. **Multiprocessing workers** - Use PyTorch multiprocessing for converter and embedding workers to provide process isolation for black-box components. Architecture:
    - **Conversion Consumer Process**: Reads from queue and manages a persistent `multiprocessing.Pool` for parallel document processing within batches
@@ -28,7 +28,7 @@
 
 8. **Temp file storage** - PDFs saved to disk using `tempfile`.
 
-9. **No authentication** - Open API, no auth for MVP.
+9. **No authentication** - Open API, no auth for initial prototype.
 
 10. **Integration tests only** - Target 60% coverage, focus on happy path (single job, queue, GPU vs CPU, batching).
 
