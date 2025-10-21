@@ -18,20 +18,33 @@ class MockPipelineRunner:
 
     COMPONENT_MAP = {
         # WARNING: delays based on rough assumptions, not real benchmarks
-        # Converters - 1s/page for Marker (GPU), 0.5s/page for MarkItDown (CPU)
-        "CONVERTER.PDF": MockConverter(0.5),  # MarkItDown
-        "CONVERTER.MARKER_PDF": MockConverter(1.0),  # Marker (GPU-accelerated)
-        "CONVERTER.DOCX": MockConverter(0.3),  # haystack builtin
-        "CONVERTER.HTML": MockConverter(0.2),  # haystack builtin
-        "CONVERTER.TEXT": MockConverter(0.1),  # haystack builtin
-        # Chunkers - minimal delay
-        "CHUNKER.DOCUMENT_SPLITTER": MockChunker(0.001),
-        "CHUNKER.MARKDOWN_AWARE": MockChunker(0.001),
-        "CHUNKER.SEMANTIC": MockChunker(0.001),
-        # Embedder - assume 10ms/batch (GPU-accelerated)
-        "EMBEDDER.SENTENCE_TRANSFORMERS_DOC": MockDocumentEmbedder(0.01),
+        # Converters
+        "CONVERTER.PDF": MockConverter(0.1),  # Haystack PyPDFToDocument (CPU)
+        "CONVERTER.DOCX": MockConverter(0.1),  # Haystack DOCXToDocument (CPU)
+        "CONVERTER.MARKDOWN": MockConverter(0.05),  # Haystack MarkdownToDocument (CPU)
+        "CONVERTER.HTML": MockConverter(0.05),  # Haystack HTMLToDocument (CPU)
+        "CONVERTER.TEXT": MockConverter(0.01),  # Haystack TextFileToDocument (CPU)
+        "CONVERTER.MARKER_PDF": MockConverter(1.0),  # Custom Marker (GPU-accelerated)
+        "CONVERTER.MARKITDOWN_PDF": MockConverter(0.5),  # Custom MarkItDown (CPU)
+        # Chunkers - all CPU-based, minimal delay
+        "CHUNKER.DOCUMENT_SPLITTER": MockChunker(
+            0.001
+        ),  # Haystack DocumentSplitter (CPU)
+        "CHUNKER.MARKDOWN_AWARE": MockChunker(
+            0.001
+        ),  # Custom MarkdownAwareChunker (CPU)
+        "CHUNKER.SEMANTIC": MockChunker(0.001),  # Custom SemanticChunker (CPU)
+        # Embedders - GPU-accelerated, batch processing (10ms per batch)
+        "EMBEDDER.SENTENCE_TRANSFORMERS": MockDocumentEmbedder(
+            0.01
+        ),  # Haystack TextEmbedder (GPU)
+        "EMBEDDER.SENTENCE_TRANSFORMERS_DOC": MockDocumentEmbedder(
+            0.01
+        ),  # Haystack DocumentEmbedder (GPU)
         # Writers - minimal delay
-        "WRITER.DOCUMENT_WRITER": MockDocumentWriter(0.001),
+        "WRITER.CHROMA_DOCUMENT_WRITER": MockDocumentWriter(
+            0.001
+        ),  # Haystack DocumentWriter (CPU)
     }
 
     def __init__(self, config: Any = None):
