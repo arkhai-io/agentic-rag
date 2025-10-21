@@ -293,10 +293,11 @@ curl -X POST http://localhost:8000/api/v1/ingest-papers \
   -F 'haystack_components={"converter": "MARKER", "chunker": "MARKDOWN_AWARE", "embedder": "SENTENCE_TRANSFORMERS_DOC", "writer": "DOCUMENT_WRITER"}'
 ```
 
-### Demo Script
+### Demo Scripts
 
-Test the ingestion server with the provided demo:
+Test the ingestion server with the provided demos:
 
+#### Basic API Demo
 ```bash
 # Terminal 1: Start the server
 agentic-rag-server
@@ -310,6 +311,33 @@ The demo script:
 - Sends them to the ingestion endpoint
 - Configures a Haystack pipeline (Marker converter, chunker, embedder, writer)
 - Monitors background processing
+
+#### GPU Concurrency Demos
+
+Three demonstration scripts prove the GPU-aware concurrency system works correctly:
+
+**Case 1: Sequential Batching - Conversion Worker**
+```bash
+poetry run python agentic_rag/ingestion/demos/demo_case1_sequential_batching.py
+```
+Demonstrates page-based dynamic batching where documents are accumulated until the page limit is reached.
+
+**Case 2: Token-Based Batching - Embedding Worker (No Converter)**
+```bash
+poetry run python agentic_rag/ingestion/demos/demo_case2_token_batching.py
+```
+Demonstrates token-based batching in the embedding worker with a pipeline that skips the converter stage.
+
+**Case 3: Wait Time Behavior**
+```bash
+poetry run python agentic_rag/ingestion/demos/demo_case3_wait_time.py
+```
+Demonstrates how wait_time prevents indefinite waiting by processing partial batches when the queue remains empty.
+
+**Pre-saved Results**: Server log snippets showing successful GPU concurrency behavior are available in `agentic_rag/ingestion/demos/log_examples/`:
+- `case1_sequential_batching_server.txt` - Page-based batching logs
+- `case2_token_batching_server.txt` - Token-based batching logs (no converter)
+- `case3_wait_time_server.txt` - Wait time behavior logs
 
 ### Configuration
 

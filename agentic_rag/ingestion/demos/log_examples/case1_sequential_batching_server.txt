@@ -1,0 +1,37 @@
+================================================================================
+CASE 1: Sequential Batching - Conversion Worker
+================================================================================
+Demonstrates: Page-based dynamic batching in the conversion worker
+
+## Key Behavior:
+- Documents are batched based on page count (limit: 100 pages)
+- Once page limit is exceeded, batch is processed immediately
+- Sequential document processing within each batch
+
+## Test Scenario:
+- 3 documents: 30, 40, 50 pages
+- Expected: All 3 docs batched together (120 pages exceeds 100 limit)
+
+## Server Log Snippet:
+--------------------------------------------------------------------------------
+
+2025-10-21 23:01:58,745 - converter_worker - INFO - Received first document doc1_30pages.pdf (30 pages), starting timer
+2025-10-21 23:01:58,751 - converter_worker - INFO - Added document doc2_40pages.pdf (40 pages) to batch (total: 70/100 pages, elapsed: 0.000s)
+2025-10-21 23:01:58,758 - converter_worker - INFO - Added document doc3_50pages.pdf (50 pages) to batch (total: 120/100 pages, elapsed: 0.006s)
+2025-10-21 23:01:58,758 - converter_worker - INFO - Page limit reached, processing batch
+2025-10-21 23:01:58,758 - converter_worker - INFO - Collected batch: 3 documents with 120 total pages (limit: 100)
+2025-10-21 23:01:58,758 - converter_worker - INFO - Processing batch of 3 documents sequentially through converter and chunker
+
+[... conversion processing ...]
+
+2025-10-21 23:01:59,063 - converter_worker - INFO - Batch complete: processed 3 documents -> 9 total chunks enqueued
+2025-10-21 23:01:59,063 - converter_worker - INFO - Waiting for documents (page_limit=100, wait_time=0.100s)...
+
+--------------------------------------------------------------------------------
+## Analysis:
+✓ Page-based batching works correctly
+✓ Batch accumulation: 30 + 40 + 50 = 120 pages
+✓ Triggered by exceeding 100-page limit
+✓ All 3 documents processed sequentially in one batch
+✓ 9 total chunks generated (3 chunks per document)
+================================================================================

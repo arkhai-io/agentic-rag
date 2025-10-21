@@ -1,0 +1,64 @@
+================================================================================
+CASE 2: Dynamic Token-Based Batching - Embedding Worker (No Converter)
+================================================================================
+Demonstrates: Token-based dynamic batching in the embedding worker
+
+## Key Behavior:
+- Chunks are batched based on token count (limit: 10000 tokens)
+- No converter in pipeline ([chunker, embedder, writer])
+- Embedding worker accumulates chunks until token limit or wait time
+
+## Test Scenario:
+- 5 documents with varying page counts (5, 3, 7, 4, 6 pages)
+- No converter stage (documents go directly to chunking)
+- Expected: Token-based batching of chunks
+
+## Server Log Snippet:
+--------------------------------------------------------------------------------
+
+[Conversion Worker - Processing without converter]
+2025-10-21 23:02:42,639 - converter_worker - INFO - Received first document doc1_5pages.pdf (5 pages), starting timer
+2025-10-21 23:02:42,643 - converter_worker - INFO - Added document doc2_3pages.pdf (3 pages) to batch (total: 8/100 pages, elapsed: 0.000s)
+2025-10-21 23:02:42,646 - converter_worker - INFO - Added document doc3_7pages.pdf (7 pages) to batch (total: 15/100 pages, elapsed: 0.004s)
+2025-10-21 23:02:42,650 - converter_worker - INFO - Added document doc4_4pages.pdf (4 pages) to batch (total: 19/100 pages, elapsed: 0.007s)
+2025-10-21 23:02:42,653 - converter_worker - INFO - Added document doc5_6pages.pdf (6 pages) to batch (total: 25/100 pages, elapsed: 0.011s)
+2025-10-21 23:02:42,740 - converter_worker - INFO - Wait time elapsed and queue empty, processing batch
+2025-10-21 23:02:42,740 - converter_worker - INFO - Collected batch: 5 documents with 25 total pages (limit: 100)
+
+[... conversion and chunking ...]
+
+2025-10-21 23:02:43,247 - converter_worker - INFO - Batch complete: processed 5 documents -> 15 total chunks enqueued
+
+[Embedding Worker - Token-based batching]
+2025-10-21 23:02:43,247 - embedder_worker - INFO - First chunk received: e1371e3e...chunk_0 (7 tokens)
+2025-10-21 23:02:43,247 - embedder_worker - INFO - Added chunk e1371e3e...chunk_1 (7 tokens) to batch (total: 14/10000 tokens)
+2025-10-21 23:02:43,248 - embedder_worker - INFO - Added chunk e1371e3e...chunk_2 (7 tokens) to batch (total: 21/10000 tokens)
+2025-10-21 23:02:43,248 - embedder_worker - INFO - Added chunk 20c7d074...chunk_0 (7 tokens) to batch (total: 28/10000 tokens)
+2025-10-21 23:02:43,248 - embedder_worker - INFO - Added chunk 20c7d074...chunk_1 (7 tokens) to batch (total: 35/10000 tokens)
+2025-10-21 23:02:43,248 - embedder_worker - INFO - Added chunk 20c7d074...chunk_2 (7 tokens) to batch (total: 42/10000 tokens)
+2025-10-21 23:02:43,248 - embedder_worker - INFO - Added chunk 13ed2041...chunk_0 (7 tokens) to batch (total: 49/10000 tokens)
+2025-10-21 23:02:43,248 - embedder_worker - INFO - Added chunk 13ed2041...chunk_1 (7 tokens) to batch (total: 56/10000 tokens)
+2025-10-21 23:02:43,248 - embedder_worker - INFO - Added chunk 13ed2041...chunk_2 (7 tokens) to batch (total: 63/10000 tokens)
+2025-10-21 23:02:43,248 - embedder_worker - INFO - Added chunk 3d121054...chunk_0 (7 tokens) to batch (total: 70/10000 tokens)
+2025-10-21 23:02:43,248 - embedder_worker - INFO - Added chunk 3d121054...chunk_1 (7 tokens) to batch (total: 77/10000 tokens)
+2025-10-21 23:02:43,248 - embedder_worker - INFO - Added chunk 3d121054...chunk_2 (7 tokens) to batch (total: 84/10000 tokens)
+2025-10-21 23:02:43,248 - embedder_worker - INFO - Added chunk 83a086b6...chunk_0 (7 tokens) to batch (total: 91/10000 tokens)
+2025-10-21 23:02:43,248 - embedder_worker - INFO - Added chunk 83a086b6...chunk_1 (7 tokens) to batch (total: 98/10000 tokens)
+2025-10-21 23:02:43,248 - embedder_worker - INFO - Added chunk 83a086b6...chunk_2 (7 tokens) to batch (total: 105/10000 tokens)
+2025-10-21 23:02:43,258 - embedder_worker - INFO - Wait time elapsed (0.010s) and queue empty, processing batch
+2025-10-21 23:02:43,258 - embedder_worker - INFO - Batch ready: 15 chunks with 105 total tokens (limit: 10000), elapsed: 0.010s
+2025-10-21 23:02:43,258 - embedder_worker - INFO - Processing batch of 15 chunks
+
+[... embedding and writing ...]
+
+2025-10-21 23:02:43,269 - embedder_worker - INFO - Batch complete: 15 chunks embedded and written
+
+--------------------------------------------------------------------------------
+## Analysis:
+✓ No converter in pipeline (3-component configuration works)
+✓ Token-based batching in embedding worker
+✓ Dynamic accumulation: chunks added with running token count
+✓ 15 chunks batched together (105 tokens total, well under 10k limit)
+✓ Triggered by wait_time expiration (0.010s) rather than token limit
+✓ Pipeline successfully processes documents without conversion stage
+================================================================================

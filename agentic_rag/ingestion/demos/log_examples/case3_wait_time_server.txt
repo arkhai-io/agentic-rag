@@ -1,0 +1,61 @@
+================================================================================
+CASE 3: Wait Time Behavior - Batch Formation
+================================================================================
+Demonstrates: Wait time behavior triggers partial batch processing
+
+## Key Behavior:
+- Workers wait for wait_time duration to accumulate more items
+- If queue remains empty after wait_time, process partial batch
+- Prevents indefinite waiting when batch limits aren't reached
+
+## Test Scenario:
+- Group 1: 2 documents (10p + 15p = 25 pages)
+- Wait 0.5s (>> wait_time of 0.1s)
+- Group 2: 2 documents (20p + 12p = 32 pages)
+- Each group should trigger wait_time expiration
+
+## Server Log Snippet:
+--------------------------------------------------------------------------------
+
+[Group 1 Processing]
+2025-10-21 23:04:58,559 - converter_worker - INFO - Received first document group1_doc1_10pages.pdf (10 pages), starting timer
+2025-10-21 23:04:58,563 - converter_worker - INFO - Added document group1_doc2_15pages.pdf (15 pages) to batch (total: 25/100 pages, elapsed: 0.000s)
+2025-10-21 23:04:58,660 - converter_worker - INFO - Wait time elapsed and queue empty, processing batch
+2025-10-21 23:04:58,660 - converter_worker - INFO - Collected batch: 2 documents with 25 total pages (limit: 100)
+
+[... processing group 1 ...]
+
+2025-10-21 23:04:58,761 - converter_worker - INFO - Processed document group1_doc1_10pages.pdf -> 3 chunks
+2025-10-21 23:04:58,863 - converter_worker - INFO - Processed document group1_doc2_15pages.pdf -> 3 chunks
+2025-10-21 23:04:58,863 - converter_worker - INFO - Batch complete: processed 2 documents -> 6 total chunks enqueued
+
+[Embedding worker processes Group 1 chunks]
+2025-10-21 23:04:58,873 - embedder_worker - INFO - Wait time elapsed (0.010s) and queue empty, processing batch
+2025-10-21 23:04:58,873 - embedder_worker - INFO - Batch ready: 6 chunks with 42 total tokens (limit: 10000), elapsed: 0.010s
+
+[Group 2 Processing - After 0.5s delay]
+2025-10-21 23:04:59,071 - converter_worker - INFO - Received first document group2_doc1_20pages.pdf (20 pages), starting timer
+2025-10-21 23:04:59,076 - converter_worker - INFO - Added document group2_doc2_12pages.pdf (12 pages) to batch (total: 32/100 pages, elapsed: 0.000s)
+2025-10-21 23:04:59,172 - converter_worker - INFO - Wait time elapsed and queue empty, processing batch
+2025-10-21 23:04:59,172 - converter_worker - INFO - Collected batch: 2 documents with 32 total pages (limit: 100)
+
+[... processing group 2 ...]
+
+2025-10-21 23:04:59,274 - converter_worker - INFO - Processed document group2_doc1_20pages.pdf -> 3 chunks
+2025-10-21 23:04:59,375 - converter_worker - INFO - Processed document group2_doc2_12pages.pdf -> 3 chunks
+2025-10-21 23:04:59,376 - converter_worker - INFO - Batch complete: processed 2 documents -> 6 total chunks enqueued
+
+[Embedding worker processes Group 2 chunks]
+2025-10-21 23:04:59,386 - embedder_worker - INFO - Wait time elapsed (0.011s) and queue empty, processing batch
+2025-10-21 23:04:59,386 - embedder_worker - INFO - Batch ready: 6 chunks with 42 total tokens (limit: 10000), elapsed: 0.011s
+
+--------------------------------------------------------------------------------
+## Analysis:
+✓ Wait time behavior works correctly for both workers
+✓ Group 1: Partial batch (25/100 pages) processed after 0.1s wait
+✓ Group 2: Partial batch (32/100 pages) processed after 0.1s wait
+✓ Both conversion and embedding workers show wait_time triggers
+✓ Prevents indefinite waiting when batch limits not reached
+✓ Two separate batches processed independently (0.5s apart)
+✓ Embedding worker also triggers on wait_time (not token limit)
+================================================================================

@@ -5,6 +5,9 @@ This script shows how to:
 1. Create mock documents
 2. Configure a mock pipeline
 3. Run the pipeline and see the results
+
+WARNING: this doesn't use optimizations like batching or parallelism.
+To see those in action, try demo_api_endpoint.py instead which tests the whole setup.
 """
 
 import logging
