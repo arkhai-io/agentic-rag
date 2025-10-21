@@ -5,43 +5,41 @@ Create async FastAPI endpoint with pipeline-parallel architecture using PyTorch 
 
 ## Core Components
 
-### 1. API Endpoint Enhancement
+### 1. API Endpoint (Prototype - No Job Tracking)
 - Modify `/api/v1/ingest-papers` to accept:
   - PDF bytestream (multiple files)
   - Haystack components JSON config
   - User batching config: `conversion_batch_page_limit`, `conversion_worker_pool_size`, `embedding_batch_token_limit`
-- Return job ID immediately (async processing)
-- Add status endpoint `/api/v1/jobs/{job_id}`
+- Enqueue documents to conversion queue and return simple response
+- NO job tracking, NO status endpoint in prototype (just fire and forget)
 
-### 2. Pipeline Queue System
+### 2. Pipeline Queue System (✅ IMPLEMENTED)
 - **Two-stage pipeline** with separate queues:
-  - **Conversion Queue**: Holds batches of PDFs awaiting conversion
-  - **Embedding Queue**: Holds chunks of text awaiting embedding
+  - **Conversion Queue**: Holds individual documents awaiting conversion
+  - **Embedding Queue**: Holds individual chunks awaiting embedding
 - Use PyTorch `multiprocessing.Queue` instances for both stages
-- Job model: id, status, pdf_files, components_config, batch_config, created_at, progress
-- **Process Architecture** (3 long-running processes + pool workers):
-  1. **Main FastAPI Process**: Handles API requests, manages job state, performs dynamic batching before enqueueing
-  2. **Conversion Consumer Process**: Reads from conversion queue, manages persistent `multiprocessing.Pool` (user-configurable size) for parallel document processing within batches
-  3. **Embedding Worker Process**: Single process that reads from embedding queue and calls embedder (no pool needed since embedder has internal GPU batching)
-- Job states: queued, converting, embedding, completed, failed
-- Progress tracking: conversion_progress (pages done / total pages), embedding_progress (chunks done / total chunks)
+- **Process Architecture** (2 long-running processes + pool workers):
+  1. **Main FastAPI Process**: Handles API requests, enqueues individual documents to conversion queue
+  2. **Conversion Worker Process**: Reads individual documents from conversion queue, dynamically batches them (TO BE IMPLEMENTED: page-based batching), manages persistent `multiprocessing.Pool` (user-configurable size) for parallel document processing, outputs individual chunks to embedding queue
+  3. **Embedding Worker Process**: Single process that reads individual chunks from embedding queue, dynamically batches them (TO BE IMPLEMENTED: token-based batching), calls embedder (no pool needed since embedder has internal GPU batching)
+- NO job tracking, NO progress tracking in prototype
 - Multiprocessing provides process isolation for black-box converter and embedder components
 
-### 3. Dynamic Batching System (Main Process)
-- **Conversion Batching** (by page count):
-  - Main process accumulates documents until page count reaches user's `conversion_batch_page_limit`
-  - Enqueues ready-to-process batches to conversion queue
-  - Conversion consumer process distributes documents in batch to pool workers for parallel processing
-  - Track per-document page counts for accurate batching
-- **Embedding Batching** (by token count):
-  - Main process uses basic whitespace tokenizer for token counting per chunk (no HuggingFace dependencies)
-  - Accumulates chunks until token count reaches user's `embedding_batch_token_limit`
-  - Enqueues ready-to-process batches to embedding queue
-  - Single embedding worker consumes batches and passes to embedder (which handles GPU batching internally)
-- Track per-job data characteristics:
-  - Total pages across PDFs
-  - Chunks generated from conversion
-  - Token count per chunk
+### 3. Dynamic Batching System (Worker Processes) - TO BE IMPLEMENTED
+- **Conversion Batching** (by page count - TO BE IMPLEMENTED):
+  - Main process enqueues individual documents to conversion queue
+  - Conversion worker accumulates documents from queue until total page count reaches `conversion_batch_page_limit`
+  - Distributes accumulated batch to pool workers for parallel processing
+  - Each pool worker processes one document through converter + chunker
+  - Outputs individual chunks to embedding queue
+  - Current implementation: collects exactly pool_size documents (no page counting)
+- **Embedding Batching** (by token count - TO BE IMPLEMENTED):
+  - Conversion worker enqueues individual chunks to embedding queue
+  - Embedding worker accumulates chunks in buffer until total token count reaches `embedding_batch_token_limit`
+  - Processes full buffer through embedder (which has internal GPU batching)
+  - Uses basic whitespace tokenizer for token counting per chunk (no HuggingFace dependencies)
+  - Writes embedded documents to storage
+  - Current implementation: batches by fixed batch_size (32 chunks), no token counting
 
 ### 4. Mock Component Execution
 - Mock delays from ASSUMPTIONS.md:
@@ -84,17 +82,17 @@ agentic_rag/
 ```
 
 ## Implementation Steps
-1. Create Pydantic models for requests/responses/config (including batch models)
-2. Build dual pipeline queues with PyTorch multiprocessing.Queue (conversion + embedding)
-3. Implement dynamic batching system in main process:
-   - Page-based batching for conversion (batches enqueued ready-to-process)
-   - Token-based batching for embedding (batches enqueued ready-to-process, with basic whitespace tokenizer)
-4. Create mock executor with simulated delays for both stages
-5. Set up background worker processes:
-   - Conversion consumer process (reads from conversion queue, manages persistent multiprocessing.Pool)
-   - Single embedding worker process (reads from embedding queue, calls embedder directly)
-6. Update API endpoints (submit + status with dual progress tracking)
-7. Write integration tests (including pipeline parallelism and process isolation tests)
+1. ✅ Create Pydantic models for requests/responses/config (including batch models)
+2. ✅ Build dual pipeline queues with PyTorch multiprocessing.Queue (conversion + embedding)
+   - Queues hold individual items (documents and chunks), not batches
+3. ✅ Set up background worker processes:
+   - Conversion worker process (reads individual documents, manages persistent multiprocessing.Pool)
+   - Embedding worker process (reads individual chunks, calls embedder)
+4. Implement dynamic batching in worker processes:
+   - Page-based batching for conversion worker (collect documents until page limit reached)
+   - Token-based batching for embedding worker (collect chunks until token limit reached, with basic whitespace tokenizer)
+5. Update API endpoint (simple submit, no job tracking for prototype)
+6. Manual testing with logs (verify batching and pipeline parallelism)
 
 ## Dynamic Batching Logic
 
