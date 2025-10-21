@@ -17,6 +17,7 @@ class MockPipelineRunner:
     """Mock pipeline runner that logs calls without processing input."""
 
     COMPONENT_MAP = {
+        # WARNING: delays based on rough assumptions, not real benchmarks
         # Converters - 1s/page for Marker (GPU), 0.5s/page for MarkItDown (CPU)
         "CONVERTER.PDF": MockConverter(0.5),  # MarkItDown
         "CONVERTER.MARKER_PDF": MockConverter(1.0),  # Marker (GPU-accelerated)
@@ -46,28 +47,31 @@ class MockPipelineRunner:
             len(component_names),
         )
         self.pipeline_spec = component_names
-        self.components = [self.COMPONENT_MAP[name] for name in component_names]
+        self.components = {name: self.COMPONENT_MAP[name] for name in component_names}
 
     def run(self, documents: List[Document]) -> Dict[str, Any]:
-        """Log that pipeline run was called, execute components, and return empty result."""
+        """Log that pipeline run was called, execute components, and return result."""
+        logger.info("MockPipelineRunner.run() called with %d documents", len(documents))
 
-        skip_converter: bool
         # Simplified validation
-        if len(components) == 3:
+        component_list = list(self.components.values())
+        if len(component_list) == 3:
             converter = None
-            chunker, embedder, writer = self.components
-        elif len(components) == 4:
-            converter, chunker, embedder, writer = self.components
+            chunker, embedder, writer = component_list
+        elif len(component_list) == 4:
+            converter, chunker, embedder, writer = component_list
         else:
             raise ValueError("Pipeline must have either 3 or 4 components.")
 
+        # Execute pipeline stages
         if converter is None:
-            converted = documents
+            converted: Dict[str, List[Document]] = {"documents": documents}
         else:
-            converted = converter.run(documents)
+            converted = converter.run(sources=documents)
 
-        chunked = chunker.run(converted)
-        embedded = embedder.run(chunked)
-        writer_result = writer.run(embedded)
+        chunked: Dict[str, List[Document]] = chunker.run(converted["documents"])
+        embedded: Dict[str, List[Document]] = embedder.run(chunked["documents"])
+        writer_result: Dict[str, Any] = writer.run(embedded["documents"])
 
+        logger.info("MockPipelineRunner.run() completed")
         return writer_result
