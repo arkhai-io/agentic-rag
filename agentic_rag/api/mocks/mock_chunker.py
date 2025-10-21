@@ -39,7 +39,12 @@ class MockChunker:
         Returns:
             Dictionary with "documents" key containing chunked documents
         """
-        logger.info("MockChunker.run() started with %d documents", len(documents))
+        input_doc_ids = [doc.id for doc in documents]
+        logger.info(
+            "MockChunker.run() started with %d documents (IDs: %s)",
+            len(documents),
+            input_doc_ids,
+        )
 
         if self.delay > 0:
             time.sleep(self.delay)
@@ -78,9 +83,11 @@ class MockChunker:
                     )
                 )
 
+        chunk_ids = [chunk.id for chunk in chunks]
         logger.info(
-            "MockChunker.run() completed: %d documents -> %d chunks",
+            "MockChunker.run() completed: %d documents -> %d chunks (IDs: %s)",
             len(documents),
             len(chunks),
+            chunk_ids,
         )
         return {"documents": chunks}

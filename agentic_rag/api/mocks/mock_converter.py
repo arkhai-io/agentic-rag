@@ -89,5 +89,10 @@ class MockConverter:
                 )
             )
 
-        logger.info("MockConverter.run() completed with %d documents", len(documents))
+        doc_ids = [doc.id for doc in documents]
+        logger.info(
+            "MockConverter.run() completed with %d documents (IDs: %s)",
+            len(documents),
+            doc_ids,
+        )
         return {"documents": documents}

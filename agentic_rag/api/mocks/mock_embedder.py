@@ -47,8 +47,11 @@ class MockDocumentEmbedder:
         Returns:
             Dictionary with "documents" key containing documents with embeddings
         """
+        input_doc_ids = [doc.id for doc in documents]
         logger.info(
-            "MockDocumentEmbedder.run() started with %d documents", len(documents)
+            "MockDocumentEmbedder.run() started with %d documents (IDs: %s)",
+            len(documents),
+            input_doc_ids,
         )
 
         # Calculate number of batches
@@ -81,9 +84,11 @@ class MockDocumentEmbedder:
 
             embedded_docs.append(embedded_doc)
 
+        output_doc_ids = [doc.id for doc in embedded_docs]
         logger.info(
-            "MockDocumentEmbedder.run() completed with %d embedded documents",
+            "MockDocumentEmbedder.run() completed with %d embedded documents (IDs: %s)",
             len(embedded_docs),
+            output_doc_ids,
         )
         return {"documents": embedded_docs}
 

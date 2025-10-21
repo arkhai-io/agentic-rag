@@ -31,8 +31,11 @@ class MockDocumentWriter:
         Returns:
             Dictionary with "documents_written" key containing the count
         """
+        doc_ids = [doc.id for doc in documents]
         logger.info(
-            "MockDocumentWriter.run() started with %d documents", len(documents)
+            "MockDocumentWriter.run() started with %d documents (IDs: %s)",
+            len(documents),
+            doc_ids,
         )
 
         if self.delay > 0:
