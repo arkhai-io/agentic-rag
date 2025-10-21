@@ -23,3 +23,11 @@
 * No test coverage - manual testing via log observation
 * Error handling is not guaranteed, the implementation focuses on the happy path.
 * No authentication or rate limiting.
+
+## CI / Code analysis
+
+* The implementation is verified with `make check-all` to ensure code quality.
+* Existing type-checker issues were temporarily ignored.
+* Existing test failures and test which require neo4j setup were temporarily disabled.
+* Existing issue: `pre-commit` hooks do not work correctly due to a difference in MyPy configuration between `mypy` installation inside the poetry environment and the pre-commit hook environment.
+* Existing issue: Since CI is based on `pre-commit`, it'll also fail
