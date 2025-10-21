@@ -61,8 +61,8 @@ class EmbeddingWorker:
         Args:
             component_names: List of component names [converter?, chunker, embedder, writer]
         """
-        from agentic_rag.api.mocks.mock_embedder import MockDocumentEmbedder
-        from agentic_rag.api.mocks.mock_writer import MockDocumentWriter
+        from agentic_rag.ingestion.api.mocks.mock_embedder import MockDocumentEmbedder
+        from agentic_rag.ingestion.api.mocks.mock_writer import MockDocumentWriter
 
         logger.info(
             "EmbeddingWorker starting with token_limit=%d in process %s",

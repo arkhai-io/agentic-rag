@@ -14,7 +14,7 @@ def start_server() -> None:
         )
         sys.exit(1)
 
-    from agentic_rag.api import app
+    from agentic_rag.ingestion.api import app
 
     # Set number of workers to 1 to ensure a common queue.
     # Assuming GPU is the bottleneck this should still

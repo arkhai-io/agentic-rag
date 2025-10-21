@@ -54,8 +54,8 @@ class ConversionWorker:
         Args:
             component_names: List of component names for the pipeline
         """
-        from agentic_rag.api.mocks.mock_chunker import MockChunker
-        from agentic_rag.api.mocks.mock_converter import MockConverter
+        from agentic_rag.ingestion.api.mocks.mock_chunker import MockChunker
+        from agentic_rag.ingestion.api.mocks.mock_converter import MockConverter
 
         logger.info(
             "ConversionWorker starting with pool_size=%d (for converter), page_limit=%d in process %s",

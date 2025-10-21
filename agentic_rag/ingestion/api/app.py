@@ -11,10 +11,10 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from haystack import Document
 from pypdf import PdfReader
 
-from agentic_rag.api.models import BatchConfig, IngestResponse
-from agentic_rag.core.converter_worker import start_conversion_worker
-from agentic_rag.core.embedder_worker import start_embedding_worker
-from agentic_rag.core.pipeline_queues import PipelineQueues
+from agentic_rag.ingestion.api.models import BatchConfig, IngestResponse
+from agentic_rag.ingestion.core.converter_worker import start_conversion_worker
+from agentic_rag.ingestion.core.embedder_worker import start_embedding_worker
+from agentic_rag.ingestion.core.pipeline_queues import PipelineQueues
 
 logging.basicConfig(
     level=logging.INFO,

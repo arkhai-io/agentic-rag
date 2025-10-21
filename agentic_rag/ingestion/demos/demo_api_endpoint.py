@@ -6,7 +6,6 @@ to verify the pipeline integration works correctly.
 
 import json
 import logging
-import tempfile
 import time
 from io import BytesIO
 

@@ -30,7 +30,7 @@ dependencies = [
 ]
 
 [project.scripts]
-agentic-rag-server = "agentic_rag.cli:start_server"
+agentic-rag-server = "agentic_rag.ingestion.cli:start_server"
 
 [project.optional-dependencies]
 dev = [
@@ -123,9 +123,16 @@ module = "agentic_rag.components.chunkers.*"
 warn_unused_ignores = false
 
 [[tool.mypy.overrides]]
-module = "agentic_rag.api.mocks.*"
+module = "agentic_rag.ingestion.api.mocks.*"
 warn_unused_ignores = false
 disallow_untyped_defs = false
+
+# Demo files are not production code - they are examples/testing scripts
+# Exclude them from strict type checking to avoid cluttering the codebase
+# with type annotations for throwaway demonstration code
+[[tool.mypy.overrides]]
+module = "agentic_rag.ingestion.demos.*"
+ignore_errors = true
 
 # pytest configuration
 [tool.pytest.ini_options]

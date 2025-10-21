@@ -5,10 +5,10 @@ from typing import Any, Dict, List
 
 from haystack import Document
 
-from agentic_rag.api.mocks.mock_chunker import MockChunker
-from agentic_rag.api.mocks.mock_converter import MockConverter
-from agentic_rag.api.mocks.mock_embedder import MockDocumentEmbedder
-from agentic_rag.api.mocks.mock_writer import MockDocumentWriter
+from agentic_rag.ingestion.api.mocks.mock_chunker import MockChunker
+from agentic_rag.ingestion.api.mocks.mock_converter import MockConverter
+from agentic_rag.ingestion.api.mocks.mock_embedder import MockDocumentEmbedder
+from agentic_rag.ingestion.api.mocks.mock_writer import MockDocumentWriter
 
 logger = logging.getLogger(__name__)
 
