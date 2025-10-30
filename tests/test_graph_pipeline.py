@@ -1,9 +1,24 @@
 """Test graph-based pipeline architecture (Factory + Runner + Neo4j)."""
 
+import os
+
 import pytest
 
 from agentic_rag.components import GraphStore, get_default_registry
 from agentic_rag.pipeline import PipelineFactory, PipelineRunner
+
+# Check if Neo4j environment variables are configured
+NEO4J_URI = os.getenv("NEO4J_URI")
+NEO4J_USERNAME = os.getenv("NEO4J_USERNAME")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
+
+NEO4J_AVAILABLE = all([NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD])
+
+# Skip all tests in this module if Neo4j is not configured
+pytestmark = pytest.mark.skipif(
+    not NEO4J_AVAILABLE,
+    reason="Neo4j not configured. Set NEO4J_URI, NEO4J_USERNAME, and NEO4J_PASSWORD environment variables to run these tests.",
+)
 
 
 class TestGraphPipelineArchitecture:

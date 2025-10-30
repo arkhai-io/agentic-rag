@@ -55,13 +55,18 @@ graph TB
 - **Factory Pattern**: Dynamic pipeline creation from simple specifications
 - **Runtime Parameter Support**: Override component parameters at execution time
 - **End-to-end Workflows**: Complete indexing, retrieval, and generation pipelines
+- **Optional Ingestion Server**: FastAPI-based server with GPU-aware batch processing for scalable document ingestion
 
 ## Quick Start
 
 ### Installation
 
 ```bash
+# Basic installation
 pip install -e .
+
+# Installation with API server support (optional)
+pip install -e ".[api]"
 ```
 
 ## 📊 Pipeline Flow
@@ -243,6 +248,144 @@ query_results = retrieval_runner.run("retrieval", {
 print(f"🔍 Found {len(query_results['results'])} relevant documents")
 ```
 
+## 🚀 Ingestion Server (Optional)
+
+An optional FastAPI-based ingestion server provides a scalable API for document processing with GPU-aware batch processing capabilities.
+
+### Installation
+
+Install with the `[api]` extra to enable server functionality:
+
+```bash
+pip install -e ".[api]"
+```
+
+This installs additional dependencies:
+- FastAPI for the REST API
+- Uvicorn as the ASGI server
+- python-multipart for file upload support
+
+### Starting the Server
+
+Use the CLI command to start the ingestion server:
+
+```bash
+agentic-rag-server
+```
+
+The server will:
+- Start on `http://0.0.0.0:8000`
+- Initialize background worker processes for conversion and embedding
+- Apply dynamic batching for efficient GPU utilization
+
+### API Endpoints
+
+**Health Check**
+```bash
+curl http://localhost:8000/health
+```
+
+**Ingest PDF Documents**
+```bash
+curl -X POST http://localhost:8000/api/v1/ingest-papers \
+  -F "pdf_files=@document1.pdf" \
+  -F "pdf_files=@document2.pdf" \
+  -F 'haystack_components={"converter": "MARKER", "chunker": "MARKDOWN_AWARE", "embedder": "SENTENCE_TRANSFORMERS_DOC", "writer": "DOCUMENT_WRITER"}'
+```
+
+### Demo Scripts
+
+Test the ingestion server with the provided demos:
+
+#### Basic API Demo
+```bash
+# Terminal 1: Start the server
+agentic-rag-server
+
+# Terminal 2: Run the demo (wait a few seconds after starting server)
+poetry run python agentic_rag/ingestion/demos/demo_api_endpoint.py
+```
+
+The demo script:
+- Creates mock PDF files with various page counts
+- Sends them to the ingestion endpoint
+- Configures a Haystack pipeline (Marker converter, chunker, embedder, writer)
+- Monitors background processing
+
+#### GPU Concurrency Demos
+
+Three demonstration scripts prove the GPU-aware concurrency system works correctly:
+
+**Case 1: Sequential Batching - Conversion Worker**
+```bash
+poetry run python agentic_rag/ingestion/demos/demo_case1_sequential_batching.py
+```
+Demonstrates page-based dynamic batching where documents are accumulated until the page limit is reached.
+
+**Case 2: Token-Based Batching - Embedding Worker (No Converter)**
+```bash
+poetry run python agentic_rag/ingestion/demos/demo_case2_token_batching.py
+```
+Demonstrates token-based batching in the embedding worker with a pipeline that skips the converter stage.
+
+**Case 3: Wait Time Behavior**
+```bash
+poetry run python agentic_rag/ingestion/demos/demo_case3_wait_time.py
+```
+Demonstrates how wait_time prevents indefinite waiting by processing partial batches when the queue remains empty.
+
+**Pre-saved Results**: Server log snippets showing successful GPU concurrency behavior are available in `agentic_rag/ingestion/demos/log_examples/`:
+- `case1_sequential_batching_server.txt` - Page-based batching logs
+- `case2_token_batching_server.txt` - Token-based batching logs (no converter)
+- `case3_wait_time_server.txt` - Wait time behavior logs
+
+### Configuration
+
+Configure the server via environment variables (prefix: `AGENTIC_RAG_`):
+
+```bash
+# Conversion worker settings
+export AGENTIC_RAG_CONVERSION_BATCH_PAGE_LIMIT=100
+export AGENTIC_RAG_CONVERSION_WORKER_POOL_SIZE=4
+export AGENTIC_RAG_CONVERSION_BATCH_WAIT_TIME=0.1
+
+# Embedding worker settings
+export AGENTIC_RAG_EMBEDDING_BATCH_TOKEN_LIMIT=10000
+export AGENTIC_RAG_EMBEDDING_BATCH_WAIT_TIME=0.01
+
+agentic-rag-server
+```
+
+### Architecture
+
+The ingestion server uses a multi-process architecture for efficient document processing:
+
+```mermaid
+graph LR
+    API[FastAPI Server] --> CQ[Conversion Queue]
+    CQ --> CW[Conversion Worker]
+    CW --> EQ[Embedding Queue]
+    EQ --> EW[Embedding Worker]
+    EW --> DB[(ChromaDB)]
+
+    style API fill:#e1f5fe
+    style CW fill:#fff3e0
+    style EW fill:#f3e5f5
+    style DB fill:#e8f5e8
+```
+
+**Key Features:**
+- **Pipeline Parallelism**: Embedding worker processes batch N while conversion worker processes batch N+1
+- **Dynamic Batching**: Page-based batching for conversion, token-based batching for embedding
+- **Process Isolation**: Separate worker processes for conversion and embedding stages
+- **Fire-and-forget**: Returns immediately after enqueuing documents (async processing)
+
+### Documentation
+
+For detailed implementation information, see:
+- `agentic_rag/ingestion/docs/IMPLEMENTATION_PLAN.md` - Architecture and design
+- `agentic_rag/ingestion/docs/ASSUMPTIONS.md` - Implementation constraints and guidelines
+
 ## 🗄️ Document Store Integration
 
 ChromaDB is automatically initialized with local persistence:
@@ -334,6 +477,21 @@ agentic_rag/
 │   ├── builder.py       # Pipeline construction
 │   ├── factory.py       # Pipeline creation from specs
 │   └── runner.py        # Pipeline execution
+├── ingestion/           # Optional ingestion server (requires [api] extra)
+│   ├── api/            # FastAPI application and models
+│   │   ├── app.py      # Main FastAPI app with endpoints
+│   │   ├── models.py   # Pydantic request/response models
+│   │   └── mocks/      # Mock components for testing
+│   ├── core/           # Worker processes and queues
+│   │   ├── pipeline_queues.py    # Multiprocessing queues
+│   │   ├── converter_worker.py   # Conversion worker with batching
+│   │   └── embedder_worker.py    # Embedding worker with batching
+│   ├── demos/          # Demo scripts
+│   │   └── demo_api_endpoint.py  # Test script for API
+│   ├── docs/           # Server documentation
+│   │   ├── IMPLEMENTATION_PLAN.md
+│   │   └── ASSUMPTIONS.md
+│   └── cli.py          # CLI entry point (agentic-rag-server)
 └── types/               # Type definitions
     ├── component_spec.py
     ├── pipeline_spec.py
