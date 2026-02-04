@@ -14,7 +14,9 @@ Usage as SDK:
         neo4j_username="neo4j",
         neo4j_password="password",
         openrouter_api_key="your-key",
-        lighthouse_api_key="your-key"
+        akave_access_key="your-access-key",
+        akave_secret_key="your-secret-key",
+        akave_bucket="your-bucket"
     )
 
     # Use with PipelineFactory
@@ -27,7 +29,10 @@ Environment Variables (fallback):
     - NEO4J_PASSWORD
     - NEO4J_DATABASE
     - OPENROUTER_API_KEY
-    - LIGHTHOUSE_API_KEY
+    - AKAVE_ACCESS_KEY
+    - AKAVE_SECRET_KEY
+    - AKAVE_BUCKET
+    - AKAVE_ENDPOINT
     - AGENTIC_RAG_LOG_LEVEL
     - AGENTIC_RAG_LOG_FILE
 """
@@ -46,7 +51,10 @@ class Config:
         neo4j_password: Neo4j password
         neo4j_database: Neo4j database name
         openrouter_api_key: OpenRouter API key for LLM access
-        lighthouse_api_key: Lighthouse IPFS API key
+        akave_access_key: Akave S3 access key
+        akave_secret_key: Akave S3 secret key
+        akave_bucket: Akave S3 bucket name
+        akave_endpoint: Akave S3 endpoint URL
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         log_file: Optional log file path
         agentic_root_dir: Root directory for agentic-rag data storage
@@ -59,7 +67,10 @@ class Config:
         neo4j_password: Optional[str] = None,
         neo4j_database: Optional[str] = None,
         openrouter_api_key: Optional[str] = None,
-        lighthouse_api_key: Optional[str] = None,
+        akave_access_key: Optional[str] = None,
+        akave_secret_key: Optional[str] = None,
+        akave_bucket: Optional[str] = None,
+        akave_endpoint: Optional[str] = None,
         log_level: Optional[str] = None,
         log_file: Optional[str] = None,
         agentic_root_dir: Optional[str] = None,
@@ -77,7 +88,10 @@ class Config:
             neo4j_password: Neo4j password (defaults to NEO4J_PASSWORD env var)
             neo4j_database: Neo4j database name (defaults to NEO4J_DATABASE env var)
             openrouter_api_key: OpenRouter API key (defaults to OPENROUTER_API_KEY env var)
-            lighthouse_api_key: Lighthouse IPFS key (defaults to LIGHTHOUSE_API_KEY env var)
+            akave_access_key: Akave S3 access key (defaults to AKAVE_ACCESS_KEY env var)
+            akave_secret_key: Akave S3 secret key (defaults to AKAVE_SECRET_KEY env var)
+            akave_bucket: Akave bucket name (defaults to AKAVE_BUCKET env var or "agentic-rag")
+            akave_endpoint: Akave endpoint URL (defaults to AKAVE_ENDPOINT env var)
             log_level: Log level (defaults to AGENTIC_RAG_LOG_LEVEL env var or INFO)
             log_file: Log file path (defaults to AGENTIC_RAG_LOG_FILE env var)
             agentic_root_dir: Root directory for agentic-rag data (defaults to AGENTIC_ROOT_DIR env var or ./data)
@@ -91,7 +105,14 @@ class Config:
 
         # API keys
         self.openrouter_api_key = openrouter_api_key or os.getenv("OPENROUTER_API_KEY")
-        self.lighthouse_api_key = lighthouse_api_key or os.getenv("LIGHTHOUSE_API_KEY")
+
+        # Akave S3-compatible storage configuration
+        self.akave_access_key = akave_access_key or os.getenv("AKAVE_ACCESS_KEY")
+        self.akave_secret_key = akave_secret_key or os.getenv("AKAVE_SECRET_KEY")
+        self.akave_bucket = akave_bucket or os.getenv("AKAVE_BUCKET", "agentic-rag")
+        self.akave_endpoint = akave_endpoint or os.getenv(
+            "AKAVE_ENDPOINT", "https://o3-rc3.akave.xyz"
+        )
 
         # Logging configuration
         self.log_level = log_level or os.getenv("AGENTIC_RAG_LOG_LEVEL") or "INFO"
@@ -144,14 +165,14 @@ class Config:
         """
         return self.openrouter_api_key is not None
 
-    def validate_lighthouse(self) -> bool:
+    def validate_akave(self) -> bool:
         """
-        Check if Lighthouse API key is configured.
+        Check if Akave S3 credentials are configured.
 
         Returns:
-            True if Lighthouse API key is present
+            True if Akave access key and secret key are present
         """
-        return self.lighthouse_api_key is not None
+        return self.akave_access_key is not None and self.akave_secret_key is not None
 
     def get_project_path(self, username: str, project: str) -> str:
         """
@@ -181,7 +202,10 @@ class Config:
             "neo4j_password": "***" if self.neo4j_password else None,
             "neo4j_database": self.neo4j_database,
             "openrouter_api_key": "***" if self.openrouter_api_key else None,
-            "lighthouse_api_key": "***" if self.lighthouse_api_key else None,
+            "akave_access_key": "***" if self.akave_access_key else None,
+            "akave_secret_key": "***" if self.akave_secret_key else None,
+            "akave_bucket": self.akave_bucket,
+            "akave_endpoint": self.akave_endpoint,
             "log_level": self.log_level,
             "log_file": self.log_file,
             "agentic_root_dir": self.agentic_root_dir,
