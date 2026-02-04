@@ -2,6 +2,7 @@
 
 from .components import ComponentRegistry, get_default_registry
 from .config import Config, get_config, get_global_config, set_global_config
+from .export import JSONLDExporter
 from .pipeline import PipelineFactory, PipelineRunner
 from .types import (
     DOCUMENT_STORE,
@@ -34,4 +35,5 @@ __all__ = [
     "ComponentType",
     "DOCUMENT_STORE",
     "list_available_components",
+    "JSONLDExporter",
 ]
