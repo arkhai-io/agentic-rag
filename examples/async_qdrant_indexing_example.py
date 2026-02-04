@@ -41,7 +41,9 @@ config = Config(
     neo4j_uri=os.getenv("NEO4J_URI", "bolt://localhost:7687"),
     neo4j_username=os.getenv("NEO4J_USERNAME", "neo4j"),
     neo4j_password=os.getenv("NEO4J_PASSWORD"),
-    lighthouse_api_key=os.getenv("LIGHTHOUSE_API_KEY"),
+    akave_access_key=os.getenv("AKAVE_ACCESS_KEY"),
+    akave_secret_key=os.getenv("AKAVE_SECRET_KEY"),
+    akave_bucket=os.getenv("AKAVE_BUCKET", "agentic-rag"),
     log_level=os.getenv("AGENTIC_RAG_LOG_LEVEL", "INFO"),
 )
 
@@ -132,9 +134,10 @@ async def run_qdrant_indexing_pipelines_async(data_directory: str) -> Dict[str, 
     """
     graph_store = GraphStore(config=config)
 
+    # enable_caching=True stores content in Akave and enables transformation caching
     runner = PipelineRunner(
         graph_store=graph_store,
-        enable_caching=False,
+        enable_caching=True,  # Store data in Akave
         config=config,
     )
 

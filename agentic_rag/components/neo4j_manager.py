@@ -570,24 +570,25 @@ class GraphStore:
         """Create a new project for a user."""
         # Import here to avoid circular imports
         import hashlib
+
         project_id = f"proj_{hashlib.sha256(f'{username}__{project_name}'.encode()).hexdigest()[:12]}"
-        
+
         async with self.async_driver.session(database=self.database) as session:
             query = """
                 MERGE (u:User {id: $username})
                 SET u.username = $username
                 MERGE (p:Project {id: $project_id})
-                ON CREATE SET 
+                ON CREATE SET
                     p.name = $project_name,
                     p.username = $username,
                     p.created_at = datetime()
                 MERGE (u)-[:OWNS]->(p)
             """
             await session.run(
-                query, 
-                username=username, 
+                query,
+                username=username,
                 project_name=project_name,
-                project_id=project_id
+                project_id=project_id,
             )
 
     async def get_user_projects_and_pipelines_async(
@@ -619,10 +620,14 @@ class GraphStore:
                 MATCH (u:User {username: $username})-[:OWNS]->(p:Project {name: $project_name})
                 RETURN p
             """
-            result = await session.run(query, username=username, project_name=project_name)
+            result = await session.run(
+                query, username=username, project_name=project_name
+            )
             return await result.single() is not None
 
-    async def pipeline_exists_async(self, username: str, project_name: str, pipeline_name: str) -> bool:
+    async def pipeline_exists_async(
+        self, username: str, project_name: str, pipeline_name: str
+    ) -> bool:
         """Check if a pipeline exists in a project."""
         async with self.async_driver.session(database=self.database) as session:
             query = """
@@ -632,10 +637,10 @@ class GraphStore:
                 LIMIT 1
             """
             result = await session.run(
-                query, 
-                username=username, 
-                project_name=project_name, 
-                pipeline_name=pipeline_name
+                query,
+                username=username,
+                project_name=project_name,
+                pipeline_name=pipeline_name,
             )
             return await result.single() is not None
 
@@ -763,6 +768,7 @@ class GraphStore:
         config_hash: str,
         username: str,
         processing_time_ms: Optional[int] = None,
+        run_id: Optional[str] = None,
     ) -> None:
         """
         Store a 1→N transformation in Neo4j.
@@ -771,19 +777,23 @@ class GraphStore:
         - Input DataPiece node (if not exists)
         - Output DataPiece nodes for all outputs
         - TRANSFORMED_BY edges from input to each output
+        - Optional GENERATED_BY edge to Run node (for FAIR compliance)
 
         Args:
             input_fingerprint: Fingerprint of input data
-            input_ipfs_hash: IPFS hash of input data
+            input_ipfs_hash: Storage object key (field name kept as ipfs_hash for Neo4j schema compat)
             input_data_type: Type of input data
-            output_records: List of {fingerprint, ipfs_hash, data_type}
+            output_records: List of {fingerprint, ipfs_hash, data_type, content_type?, uri?}
+                           (ipfs_hash field stores Akave object key)
             component_id: ID of component that did transformation
             component_name: Name of component
             config_hash: Hash of component config
             username: User who owns this data
             processing_time_ms: Optional processing time
+            run_id: Optional run ID for FAIR provenance tracking
         """
         with self.driver.session(database=self.database) as session:
+            # Main query to create DataPiece nodes and TRANSFORMED_BY edges
             query = """
                 // Create or get input DataPiece
                 MERGE (input:DataPiece {fingerprint: $input_fingerprint})
@@ -802,6 +812,10 @@ class GraphStore:
                     out.data_type = output.data_type,
                     out.username = $username,
                     out.created_at = datetime()
+                // Set FAIR compliance fields if provided
+                SET out.content_type = COALESCE(output.content_type, out.content_type),
+                    out.uri = COALESCE(output.uri, out.uri),
+                    out.generated_by = COALESCE($run_id, out.generated_by)
 
                 // Create TRANSFORMED_BY edge
                 MERGE (input)-[t:TRANSFORMED_BY {
@@ -825,7 +839,21 @@ class GraphStore:
                 config_hash=config_hash,
                 username=username,
                 processing_time_ms=processing_time_ms,
+                run_id=run_id,
             ).consume()
+
+            # Create GENERATED_BY relationship to Run node if run_id provided
+            if run_id:
+                run_query = """
+                    UNWIND $output_fingerprints AS fp
+                    MATCH (d:DataPiece {fingerprint: fp})
+                    MATCH (r:Run {id: $run_id})
+                    MERGE (d)-[:GENERATED_BY]->(r)
+                """
+                output_fps = [r["fingerprint"] for r in output_records]
+                session.run(
+                    run_query, output_fingerprints=output_fps, run_id=run_id
+                ).consume()
 
     async def store_transformation_batch_async(
         self,
@@ -838,6 +866,7 @@ class GraphStore:
         config_hash: str,
         username: str,
         processing_time_ms: Optional[int] = None,
+        run_id: Optional[str] = None,
     ) -> None:
         """
         Async version of store_transformation_batch.
@@ -846,14 +875,16 @@ class GraphStore:
 
         Args:
             input_fingerprint: Fingerprint of input data
-            input_ipfs_hash: IPFS hash of input data
+            input_ipfs_hash: Storage object key (field name kept as ipfs_hash for Neo4j schema compat)
             input_data_type: Type of input data
-            output_records: List of {fingerprint, ipfs_hash, data_type}
+            output_records: List of {fingerprint, ipfs_hash, data_type, content_type?, uri?}
+                           (ipfs_hash field stores Akave object key)
             component_id: ID of component that did transformation
             component_name: Name of component
             config_hash: Hash of component config
             username: User who owns this data
             processing_time_ms: Optional processing time
+            run_id: Optional run ID for FAIR provenance tracking
         """
         async with self.async_driver.session(database=self.database) as session:
             query = """
@@ -874,6 +905,10 @@ class GraphStore:
                     out.data_type = output.data_type,
                     out.username = $username,
                     out.created_at = datetime()
+                // Set FAIR compliance fields if provided
+                SET out.content_type = COALESCE(output.content_type, out.content_type),
+                    out.uri = COALESCE(output.uri, out.uri),
+                    out.generated_by = COALESCE($run_id, out.generated_by)
 
                 // Create TRANSFORMED_BY edge
                 MERGE (input)-[t:TRANSFORMED_BY {
@@ -897,5 +932,241 @@ class GraphStore:
                 config_hash=config_hash,
                 username=username,
                 processing_time_ms=processing_time_ms,
+                run_id=run_id,
             )
+            await result.consume()
+
+            # Create GENERATED_BY relationship to Run node if run_id provided
+            if run_id:
+                run_query = """
+                    UNWIND $output_fingerprints AS fp
+                    MATCH (d:DataPiece {fingerprint: fp})
+                    MATCH (r:Run {id: $run_id})
+                    MERGE (d)-[:GENERATED_BY]->(r)
+                """
+                output_fps = [r["fingerprint"] for r in output_records]
+                result = await session.run(
+                    run_query, output_fingerprints=output_fps, run_id=run_id
+                )
+                await result.consume()
+
+    # =========================================================================
+    # FAIR Compliance: RunNode Methods
+    # =========================================================================
+
+    def store_run_node(
+        self,
+        run_id: str,
+        pipeline_name: str,
+        username: str,
+        project: str = "default",
+        pipeline_version: Optional[str] = None,
+        git_commit: Optional[str] = None,
+        model_names: Optional[List[str]] = None,
+        config_hash: Optional[str] = None,
+        started_at: Optional[str] = None,
+        uri: Optional[str] = None,
+    ) -> None:
+        """
+        Store a RunNode in Neo4j for provenance tracking.
+
+        Args:
+            run_id: Unique run identifier
+            pipeline_name: Name of the pipeline being run
+            username: User who initiated the run
+            project: Project name
+            pipeline_version: Optional pipeline version
+            git_commit: Optional git commit hash
+            model_names: Optional list of model names used
+            config_hash: Optional hash of pipeline config
+            started_at: ISO timestamp when run started
+            uri: Persistent URI for FAIR compliance
+        """
+        with self.driver.session(database=self.database) as session:
+            query = """
+                MERGE (r:Run {id: $run_id})
+                ON CREATE SET
+                    r.pipeline_name = $pipeline_name,
+                    r.username = $username,
+                    r.project = $project,
+                    r.started_at = $started_at,
+                    r.uri = $uri,
+                    r.created_at = datetime()
+                ON MATCH SET
+                    r.pipeline_name = $pipeline_name,
+                    r.username = $username,
+                    r.project = $project
+            """
+            params: Dict[str, Any] = {
+                "run_id": run_id,
+                "pipeline_name": pipeline_name,
+                "username": username,
+                "project": project,
+                "started_at": started_at,
+                "uri": uri,
+            }
+
+            session.run(query, **params).consume()
+
+            # Set optional properties separately to avoid null issues
+            if pipeline_version or git_commit or model_names or config_hash:
+                set_clauses = []
+                opt_params: Dict[str, Any] = {"run_id": run_id}
+
+                if pipeline_version:
+                    set_clauses.append("r.pipeline_version = $pipeline_version")
+                    opt_params["pipeline_version"] = pipeline_version
+                if git_commit:
+                    set_clauses.append("r.git_commit = $git_commit")
+                    opt_params["git_commit"] = git_commit
+                if model_names:
+                    set_clauses.append("r.model_names = $model_names")
+                    opt_params["model_names"] = model_names
+                if config_hash:
+                    set_clauses.append("r.config_hash = $config_hash")
+                    opt_params["config_hash"] = config_hash
+
+                if set_clauses:
+                    update_query = f"""
+                        MATCH (r:Run {{id: $run_id}})
+                        SET {', '.join(set_clauses)}
+                    """
+                    session.run(update_query, **opt_params).consume()
+
+    async def store_run_node_async(
+        self,
+        run_id: str,
+        pipeline_name: str,
+        username: str,
+        project: str = "default",
+        pipeline_version: Optional[str] = None,
+        git_commit: Optional[str] = None,
+        model_names: Optional[List[str]] = None,
+        config_hash: Optional[str] = None,
+        started_at: Optional[str] = None,
+        uri: Optional[str] = None,
+    ) -> None:
+        """Async version of store_run_node."""
+        async with self.async_driver.session(database=self.database) as session:
+            query = """
+                MERGE (r:Run {id: $run_id})
+                ON CREATE SET
+                    r.pipeline_name = $pipeline_name,
+                    r.username = $username,
+                    r.project = $project,
+                    r.started_at = $started_at,
+                    r.uri = $uri,
+                    r.created_at = datetime()
+                ON MATCH SET
+                    r.pipeline_name = $pipeline_name,
+                    r.username = $username,
+                    r.project = $project
+            """
+            params: Dict[str, Any] = {
+                "run_id": run_id,
+                "pipeline_name": pipeline_name,
+                "username": username,
+                "project": project,
+                "started_at": started_at,
+                "uri": uri,
+            }
+
+            result = await session.run(query, **params)
+            await result.consume()
+
+            # Set optional properties
+            if pipeline_version or git_commit or model_names or config_hash:
+                set_clauses = []
+                opt_params: Dict[str, Any] = {"run_id": run_id}
+
+                if pipeline_version:
+                    set_clauses.append("r.pipeline_version = $pipeline_version")
+                    opt_params["pipeline_version"] = pipeline_version
+                if git_commit:
+                    set_clauses.append("r.git_commit = $git_commit")
+                    opt_params["git_commit"] = git_commit
+                if model_names:
+                    set_clauses.append("r.model_names = $model_names")
+                    opt_params["model_names"] = model_names
+                if config_hash:
+                    set_clauses.append("r.config_hash = $config_hash")
+                    opt_params["config_hash"] = config_hash
+
+                if set_clauses:
+                    update_query = f"""
+                        MATCH (r:Run {{id: $run_id}})
+                        SET {', '.join(set_clauses)}
+                    """
+                    result = await session.run(update_query, **opt_params)
+                    await result.consume()
+
+    def update_run_finished(
+        self,
+        run_id: str,
+        finished_at: str,
+        success: bool = True,
+        error: Optional[str] = None,
+    ) -> None:
+        """
+        Update a RunNode with completion information.
+
+        Args:
+            run_id: Run identifier
+            finished_at: ISO timestamp when run finished
+            success: Whether the run completed successfully
+            error: Optional error message if failed
+        """
+        with self.driver.session(database=self.database) as session:
+            query = """
+                MATCH (r:Run {id: $run_id})
+                SET r.finished_at = $finished_at,
+                    r.success = $success
+            """
+            params: Dict[str, Any] = {
+                "run_id": run_id,
+                "finished_at": finished_at,
+                "success": success,
+            }
+
+            if error:
+                query = """
+                    MATCH (r:Run {id: $run_id})
+                    SET r.finished_at = $finished_at,
+                        r.success = $success,
+                        r.error = $error
+                """
+                params["error"] = error
+
+            session.run(query, **params).consume()
+
+    async def update_run_finished_async(
+        self,
+        run_id: str,
+        finished_at: str,
+        success: bool = True,
+        error: Optional[str] = None,
+    ) -> None:
+        """Async version of update_run_finished."""
+        async with self.async_driver.session(database=self.database) as session:
+            query = """
+                MATCH (r:Run {id: $run_id})
+                SET r.finished_at = $finished_at,
+                    r.success = $success
+            """
+            params: Dict[str, Any] = {
+                "run_id": run_id,
+                "finished_at": finished_at,
+                "success": success,
+            }
+
+            if error:
+                query = """
+                    MATCH (r:Run {id: $run_id})
+                    SET r.finished_at = $finished_at,
+                        r.success = $success,
+                        r.error = $error
+                """
+                params["error"] = error
+
+            result = await session.run(query, **params)
             await result.consume()

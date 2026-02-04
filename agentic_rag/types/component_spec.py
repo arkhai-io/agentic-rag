@@ -27,6 +27,10 @@ class ComponentSpec:
     # Store the full type string (e.g., "EMBEDDER.SENTENCE_TRANSFORMERS_DOC")
     full_type: str = ""
 
+    # FAIR Compliance: What content type this component produces
+    # e.g., CONVERTER produces DOCUMENT, CHUNKER produces CHUNK, EMBEDDER produces EMBEDDING
+    produces_content_type: Optional[str] = None  # String value of ContentType enum
+
     def is_compatible_input(self, data_type: DataType) -> bool:
         """Check if a data type is compatible with this component's inputs."""
         return data_type in self.input_types
@@ -141,7 +145,7 @@ def create_haystack_component(spec: ComponentSpec) -> Any:
 
     # Check if this is a Chroma component by name
     is_chroma_component = "chroma" in spec.name.lower()
-    
+
     # Check if this is a Qdrant component by name
     is_qdrant_component = "qdrant" in spec.name.lower()
 
@@ -162,7 +166,7 @@ def create_haystack_component(spec: ComponentSpec) -> Any:
         # Check for remote ChromaDB configuration (for async support)
         chroma_host = config.pop("chroma_host", None)
         chroma_port = config.pop("chroma_port", None)
-        
+
         # Fallback to env vars if not in config (Safety net)
         if not chroma_host:
             chroma_host = os.getenv("CHROMA_HOST")
@@ -171,12 +175,14 @@ def create_haystack_component(spec: ComponentSpec) -> Any:
 
         if chroma_port:
             chroma_port = int(chroma_port)
-            
+
         chroma_collection = config.pop("chroma_collection", None)
 
         # DEBUG LOG
         print(f"DEBUG: Creating Chroma component {spec.name}")
-        print(f"DEBUG: chroma_host={chroma_host}, chroma_port={chroma_port}, collection={chroma_collection}")
+        print(
+            f"DEBUG: chroma_host={chroma_host}, chroma_port={chroma_port}, collection={chroma_collection}"
+        )
 
         document_store = _create_chroma_document_store(
             root_dir=root_dir,
@@ -187,9 +193,9 @@ def create_haystack_component(spec: ComponentSpec) -> Any:
         config["document_store"] = document_store
 
     # Special handling for Qdrant components - inject document store
-    elif (
-        "QdrantEmbeddingRetriever" in spec.haystack_class
-        or ("DocumentWriter" in spec.haystack_class and (is_qdrant_component or has_qdrant_config))
+    elif "QdrantEmbeddingRetriever" in spec.haystack_class or (
+        "DocumentWriter" in spec.haystack_class
+        and (is_qdrant_component or has_qdrant_config)
     ):
         # Get root directory from config or use current directory
         config.pop("model", None)  # Remove model if present for these components

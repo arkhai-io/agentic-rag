@@ -12,6 +12,7 @@ from ..types import (
     PipelineUsage,
     create_haystack_component,
 )
+from ..types.node_types import ContentType
 
 
 class ComponentRegistry:
@@ -104,7 +105,7 @@ class ComponentRegistry:
     def _initialize_default_components(self) -> None:
         """Initialize default Haystack component mappings."""
 
-        # Converters
+        # Converters - produce DOCUMENT
         self.register_component(
             ComponentSpec(
                 name="pdf_converter",
@@ -114,6 +115,7 @@ class ComponentRegistry:
                 output_types=[DataType.LIST_DOCUMENT],
                 pipeline_usage=PipelineUsage.INDEXING,
                 default_config={},
+                produces_content_type=ContentType.DOCUMENT.value,
             )
         )
 
@@ -126,6 +128,7 @@ class ComponentRegistry:
                 output_types=[DataType.LIST_DOCUMENT],
                 pipeline_usage=PipelineUsage.INDEXING,
                 default_config={},
+                produces_content_type=ContentType.DOCUMENT.value,
             )
         )
 
@@ -138,6 +141,7 @@ class ComponentRegistry:
                 output_types=[DataType.LIST_DOCUMENT],
                 pipeline_usage=PipelineUsage.INDEXING,
                 default_config={},
+                produces_content_type=ContentType.DOCUMENT.value,
             )
         )
 
@@ -150,6 +154,7 @@ class ComponentRegistry:
                 output_types=[DataType.LIST_DOCUMENT],
                 pipeline_usage=PipelineUsage.INDEXING,
                 default_config={},
+                produces_content_type=ContentType.DOCUMENT.value,
             )
         )
 
@@ -162,6 +167,7 @@ class ComponentRegistry:
                 output_types=[DataType.LIST_DOCUMENT],
                 pipeline_usage=PipelineUsage.INDEXING,
                 default_config={},
+                produces_content_type=ContentType.DOCUMENT.value,
             )
         )
 
@@ -178,6 +184,7 @@ class ComponentRegistry:
                     "output_format": "markdown",
                     "store_full_path": False,
                 },
+                produces_content_type=ContentType.DOCUMENT.value,
             )
         )
 
@@ -192,10 +199,11 @@ class ComponentRegistry:
                 default_config={
                     "store_full_path": False,
                 },
+                produces_content_type=ContentType.DOCUMENT.value,
             )
         )
 
-        # Chunkers/Splitters - Only verified existing ones
+        # Chunkers/Splitters - produce CHUNK
         self.register_component(
             ComponentSpec(
                 name="chunker",
@@ -205,10 +213,11 @@ class ComponentRegistry:
                 output_types=[DataType.LIST_DOCUMENT],
                 pipeline_usage=PipelineUsage.INDEXING,
                 default_config={"split_by": "sentence", "split_length": 512},
+                produces_content_type=ContentType.CHUNK.value,
             )
         )
 
-        # Custom Chunkers
+        # Custom Chunkers - produce CHUNK
         self.register_component(
             ComponentSpec(
                 name="markdown_aware_chunker",
@@ -218,6 +227,7 @@ class ComponentRegistry:
                 output_types=[DataType.LIST_DOCUMENT],
                 pipeline_usage=PipelineUsage.INDEXING,
                 default_config={"chunk_size": 1000, "chunk_overlap": 100},
+                produces_content_type=ContentType.CHUNK.value,
             )
         )
 
@@ -234,10 +244,11 @@ class ComponentRegistry:
                     "max_chunk_size": 1000,
                     "overlap_size": 50,
                 },
+                produces_content_type=ContentType.CHUNK.value,
             )
         )
 
-        # Embedders - Only verified existing ones
+        # Embedders - produce EMBEDDING
         self.register_component(
             ComponentSpec(
                 name="embedder",
@@ -247,6 +258,7 @@ class ComponentRegistry:
                 output_types=[DataType.LIST_LIST_FLOAT],
                 pipeline_usage=PipelineUsage.RETRIEVAL,
                 default_config={"model": "sentence-transformers/all-MiniLM-L6-v2"},
+                produces_content_type=ContentType.EMBEDDING.value,
             )
         )
 
@@ -259,6 +271,7 @@ class ComponentRegistry:
                 output_types=[DataType.LIST_DOCUMENT],  # Documents with embeddings
                 pipeline_usage=PipelineUsage.INDEXING,
                 default_config={"model": "sentence-transformers/all-MiniLM-L6-v2"},
+                produces_content_type=ContentType.EMBEDDING.value,
             )
         )
 

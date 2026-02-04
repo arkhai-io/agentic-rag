@@ -49,4 +49,4 @@ Multi-source retrieval with evaluation:
 
 - **Neo4j**: Pipeline graphs with `User → Project → Pipelines` hierarchy
 - **ChromaDB**: Vector embeddings at `./data/{username}/{project}/{pipeline_name}/`
-- **IPFS**: Document content with user-based access control
+- **Akave**: Document content on decentralized S3-compatible storage with user-based access control

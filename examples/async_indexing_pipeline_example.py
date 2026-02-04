@@ -13,7 +13,7 @@ Each pipeline:
 - Generates embeddings using different models
 - Stores them in separate ChromaDB collections
 
-The pipelines automatically store metadata in Neo4j and content in IPFS.
+The pipelines automatically store metadata in Neo4j and content in Akave.
 """
 
 import asyncio
@@ -43,7 +43,9 @@ config = Config(
     neo4j_uri=os.getenv("NEO4J_URI", "bolt://localhost:7687"),
     neo4j_username=os.getenv("NEO4J_USERNAME", "neo4j"),
     neo4j_password=os.getenv("NEO4J_PASSWORD"),
-    lighthouse_api_key=os.getenv("LIGHTHOUSE_API_KEY"),  # Optional: For IPFS storage
+    akave_access_key=os.getenv("AKAVE_ACCESS_KEY"),  # For Akave S3-compatible storage
+    akave_secret_key=os.getenv("AKAVE_SECRET_KEY"),
+    akave_bucket=os.getenv("AKAVE_BUCKET", "agentic-rag"),
     log_level=os.getenv("AGENTIC_RAG_LOG_LEVEL", "INFO"),
 )
 
@@ -160,9 +162,10 @@ async def run_indexing_pipelines_async(data_directory: str) -> Dict[str, Any]:
     graph_store = GraphStore(config=config)
 
     # Initialize runner (singleton - no username needed at init)
+    # enable_caching=True stores content in Akave and enables transformation caching
     runner = PipelineRunner(
         graph_store=graph_store,
-        enable_caching=False,
+        enable_caching=True,  # Store data in Akave
         config=config,
     )
 
