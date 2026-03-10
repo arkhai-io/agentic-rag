@@ -1,5 +1,6 @@
 """Graph storage for creating and managing graph representations of pipelines."""
 
+import sys
 from typing import Any, Dict, List, Optional, Tuple
 
 from haystack import Pipeline
@@ -343,7 +344,10 @@ class GraphStorage:
             try:
                 pipeline.connect(source, target)
             except Exception as e:
-                print(f"Warning: Could not connect {source} -> {target}: {e}")
+                print(
+                    f"Warning: Could not connect {source} -> {target}: {e}",
+                    file=sys.stderr,
+                )
 
         return pipeline
 
@@ -383,7 +387,10 @@ class GraphStorage:
 
         # 2. Fetch components for each pipeline hash separately
         for pipeline_hash in pipeline_hashes:
-            print(f"\nFetching components for pipeline: {pipeline_hash}")
+            print(
+                f"\nFetching components for pipeline: {pipeline_hash}",
+                file=sys.stderr,
+            )
 
             # Call Neo4j for this specific pipeline hash (single hash method)
             component_data_list = self.graph_store.get_pipeline_components_by_hash(
@@ -392,13 +399,13 @@ class GraphStorage:
                 project,  # Single pipeline hash with project filter
             )
 
-            print(f"   Found {len(component_data_list)} components")
+            print(f"   Found {len(component_data_list)} components", file=sys.stderr)
 
             if component_data_list:
                 pipelines_data[pipeline_hash] = component_data_list
 
                 # Print details for this pipeline
-                print(component_data_list)
+                print(component_data_list, file=sys.stderr)
 
         return pipelines_data
 
@@ -426,7 +433,10 @@ class GraphStorage:
 
         # 2. Fetch components for each pipeline hash separately
         for pipeline_hash in pipeline_hashes:
-            print(f"\nFetching components for pipeline (async): {pipeline_hash}")
+            print(
+                f"\nFetching components for pipeline (async): {pipeline_hash}",
+                file=sys.stderr,
+            )
 
             # Call Neo4j for this specific pipeline hash (async)
             component_data_list = (
@@ -437,7 +447,7 @@ class GraphStorage:
                 )
             )
 
-            print(f"   Found {len(component_data_list)} components")
+            print(f"   Found {len(component_data_list)} components", file=sys.stderr)
 
             if component_data_list:
                 pipelines_data[pipeline_hash] = component_data_list

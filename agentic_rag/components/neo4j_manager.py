@@ -1,6 +1,7 @@
 """Simple graph database store for batch nodes and edges."""
 
 import ssl
+import sys
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import certifi
@@ -71,9 +72,12 @@ class GraphStore:
                 "  GraphStore(config=config)"
             )
 
-        print(f"GraphStore connecting to: {self.uri} with user: {self.neo4j_username}")
+        print(
+            f"GraphStore connecting to: {self.uri} with user: {self.neo4j_username}",
+            file=sys.stderr,
+        )
         if self.database:
-            print(f"Using database: {self.database}")
+            print(f"Using database: {self.database}", file=sys.stderr)
 
         # Use the same SSL setup as the working example
         ssl_ctx = ssl.create_default_context(cafile=certifi.where())
@@ -98,10 +102,10 @@ class GraphStore:
         # Verify connectivity like the working example
         try:
             self.driver.verify_connectivity()
-            print("GraphStore connected successfully!")
+            print("GraphStore connected successfully!", file=sys.stderr)
             self._initialized = True
         except Exception as e:
-            print(f"GraphStore connection failed: {e}")
+            print(f"GraphStore connection failed: {e}", file=sys.stderr)
             raise
 
     @classmethod

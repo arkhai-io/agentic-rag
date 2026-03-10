@@ -178,12 +178,6 @@ def create_haystack_component(spec: ComponentSpec) -> Any:
 
         chroma_collection = config.pop("chroma_collection", None)
 
-        # DEBUG LOG
-        print(f"DEBUG: Creating Chroma component {spec.name}")
-        print(
-            f"DEBUG: chroma_host={chroma_host}, chroma_port={chroma_port}, collection={chroma_collection}"
-        )
-
         document_store = _create_chroma_document_store(
             root_dir=root_dir,
             host=chroma_host,
