@@ -215,6 +215,36 @@ export OPENROUTER_API_KEY="your-key"
 
 The Config object takes priority, with environment variables used as fallback if not provided.
 
+## MCP Server
+
+`agentic-rag` can also run as an MCP server for external agents.
+
+Start it with:
+
+```bash
+poetry run python -m agentic_rag.mcp.server
+```
+
+It exposes tools for:
+- listing available components and pipelines
+- creating indexing and retrieval pipelines
+- loading pipelines for execution
+- running indexing and retrieval queries
+
+## FAIR Logic
+
+`agentic-rag` includes a lightweight FAIR/provenance model built around pipeline runs and generated data.
+
+- **`RunNode`**: every pipeline execution can create a run record with timestamps, status, and a persistent URI
+- **`DataPiece`**: documents, chunks, embeddings, and derived artifacts are tracked as deduplicated data nodes using fingerprints
+- **`TRANSFORMED_BY`**: links one `DataPiece` to another through a component transformation step
+- **`GENERATED_BY`**: links produced `DataPiece` nodes back to the `RunNode` that created them
+- **Content URIs**: semantic content types and generated URIs support JSON-LD export and downstream interoperability
+
+At runtime, indexing runs can create a provenance trail from source document to chunk to embedding to stored artifact. This makes it possible to inspect what was produced, which pipeline and component produced it, and which run generated it.
+
+For interoperability/export, see `agentic_rag/export/jsonld_exporter.py`.
+
 ## Quick Start
 
 ### 1. Index documents with multiple strategies
