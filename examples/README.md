@@ -25,6 +25,9 @@ poetry run python examples/indexing_pipeline_example.py
 
 # Query indexed documents
 poetry run python examples/retrieval_pipeline_example.py
+
+# Start MCP server (stdio transport)
+poetry run python examples/mcp_server_example.py
 ```
 
 ## Examples
@@ -44,6 +47,14 @@ Multi-source retrieval with evaluation:
 - Generates answers via OpenRouter
 - Evaluates with BLEU, ROUGE, coherence, readability
 - **Important**: Must use same `project` as indexing pipelines
+
+### `mcp_server_example.py`
+
+Runs an MCP server that exposes `agentic-rag` operations as tools:
+- create pipelines (indexing and retrieval)
+- load pipelines for execution
+- run indexing and retrieval pipelines
+- list projects, pipelines, and components
 
 ## Storage & Organization
 
