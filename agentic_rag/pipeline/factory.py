@@ -436,7 +436,8 @@ class PipelineFactory:
 
                 # Auto-generate root_dir for document writers if not provided
                 if (
-                    component_name in ["chroma_document_writer", "qdrant_document_writer"]
+                    component_name
+                    in ["chroma_document_writer", "qdrant_document_writer"]
                     and "root_dir" not in user_config
                 ):
                     user_config = user_config.copy()  # Don't modify original config
