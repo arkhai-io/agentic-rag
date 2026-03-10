@@ -337,7 +337,18 @@ class ComponentRegistry:
                 output_types=[DataType.STRING],
                 pipeline_usage=PipelineUsage.RETRIEVAL,
                 dependencies=[],
-                default_config={},
+                default_config={
+                    "template": (
+                        "Answer the question based only on the provided documents.\n\n"
+                        "Question: {{query}}\n\n"
+                        "Documents:\n"
+                        "{% for doc in documents %}\n"
+                        "{{ doc.content }}\n"
+                        "---\n"
+                        "{% endfor %}\n\n"
+                        "Answer:"
+                    )
+                },
                 parallelizable=False,
             )
         )
