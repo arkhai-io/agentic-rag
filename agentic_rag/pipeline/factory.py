@@ -418,41 +418,48 @@ class PipelineFactory:
         self.logger.info(
             f"Building indexing pipeline (async): {pipeline_name} for user: {username}, project: {project}"
         )
+        self.logger.info(f"Component specs: {component_specs}")
 
         # Parse component specifications and validate
         component_specs_list = []
         for spec_item in component_specs:
-            component_name = self._parse_component_spec(spec_item)
+            try:
+                component_name = self._parse_component_spec(spec_item)
+                self.logger.info(f"Processing component: {component_name}")
 
-            spec = self.registry.get_component_spec(component_name)
-            if spec is None:
-                raise ValueError(f"Unknown component: {component_name}")
+                spec = self.registry.get_component_spec(component_name)
+                if spec is None:
+                    raise ValueError(f"Unknown component: {component_name}")
 
-            # Configure the spec directly with user config
-            user_config = config.get(component_name, {})
+                # Configure the spec directly with user config
+                user_config = config.get(component_name, {})
 
-            # Auto-generate root_dir for document writers if not provided
-            if (
-                component_name in ["chroma_document_writer", "qdrant_document_writer"]
-                and "root_dir" not in user_config
-            ):
-                user_config = user_config.copy()  # Don't modify original config
-                # Use agentic_root_dir from config if available
-                root_dir = self.config.agentic_root_dir if self.config else "./data"
-                user_config["root_dir"] = (
-                    f"{root_dir}/{username}/{project}/{pipeline_name}"
-                )
-                self.logger.debug(
-                    f"Auto-generated root_dir for {component_name}: {user_config['root_dir']}"
-                )
+                # Auto-generate root_dir for document writers if not provided
+                if (
+                    component_name in ["chroma_document_writer", "qdrant_document_writer"]
+                    and "root_dir" not in user_config
+                ):
+                    user_config = user_config.copy()  # Don't modify original config
+                    # Use agentic_root_dir from config if available
+                    root_dir = self.config.agentic_root_dir if self.config else "./data"
+                    user_config["root_dir"] = (
+                        f"{root_dir}/{username}/{project}/{pipeline_name}"
+                    )
+                    self.logger.info(
+                        f"Auto-generated root_dir for {component_name}: {user_config['root_dir']}"
+                    )
 
-            configured_spec = spec.configure(user_config)
+                configured_spec = spec.configure(user_config)
 
-            # Store the original full type string
-            configured_spec.full_type = spec_item.get("type", "")
+                # Store the original full type string
+                configured_spec.full_type = spec_item.get("type", "")
 
-            component_specs_list.append(configured_spec)
+                component_specs_list.append(configured_spec)
+            except Exception as e:
+                self.logger.error(f"Error processing component spec {spec_item}: {e}")
+                raise
 
+        self.logger.info("Finished processing components, creating PipelineSpec")
         # Create pipeline specification
         pipeline_spec = PipelineSpec(
             name=pipeline_name,

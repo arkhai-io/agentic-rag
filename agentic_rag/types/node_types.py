@@ -2,7 +2,54 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional, Tuple
+from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple
+
+# =============================================================================
+# FAIR Compliance: URI Namespace and Content Types
+# =============================================================================
+
+# Persistent URI namespace for FAIR compliance (F1-F3)
+ARKHAI_NAMESPACE = "https://w3id.org/arkhai"
+
+
+class ContentType(Enum):
+    """
+    Semantic content type for FAIR compliance.
+
+    Maps to JSON-LD @type during export. Used to distinguish between
+    different kinds of data flowing through pipelines.
+    """
+
+    DOCUMENT = "Document"  # Original/converted documents
+    CHUNK = "Chunk"  # Text chunks from chunking
+    EMBEDDING = "Embedding"  # Vector embeddings
+    DATA_NODE = "DataNode"  # Generic data (fallback)
+
+
+def generate_uri(content_type: ContentType, identifier: str) -> str:
+    """
+    Generate a persistent URI for FAIR compliance (F1-F3).
+
+    Args:
+        content_type: The semantic type of the content
+        identifier: Unique identifier (e.g., fingerprint)
+
+    Returns:
+        URI like https://w3id.org/arkhai/doc/fp_abc123
+
+    Example:
+        >>> generate_uri(ContentType.DOCUMENT, "fp_abc123")
+        'https://w3id.org/arkhai/doc/fp_abc123'
+    """
+    type_to_path = {
+        ContentType.DOCUMENT: "doc",
+        ContentType.CHUNK: "chunk",
+        ContentType.EMBEDDING: "embedding",
+        ContentType.DATA_NODE: "data",
+    }
+    path = type_to_path.get(content_type, "data")
+    return f"{ARKHAI_NAMESPACE}/{path}/{identifier}"
 
 
 @dataclass
@@ -191,6 +238,116 @@ class ProjectNode:
         )
 
 
+# =============================================================================
+# FAIR Compliance: Run/Provenance Tracking
+# =============================================================================
+
+
+@dataclass
+class RunNode:
+    """
+    Represents a pipeline execution run for provenance tracking.
+
+    Links all data transformations from a single pipeline execution.
+    Required for FAIR compliance (PROV-O: prov:Activity).
+
+    Graph pattern:
+        Run -[:GENERATED]-> DataPiece
+        DataPiece -[:GENERATED_BY]-> Run
+
+    Example:
+        >>> run = RunNode(
+        ...     id="run_abc123",
+        ...     pipeline_name="indexing_pipeline",
+        ...     username="alice",
+        ... )
+        >>> run.uri
+        'https://w3id.org/arkhai/run/run_abc123'
+    """
+
+    # Identity (required)
+    id: str  # Run identifier (e.g., "run_abc123")
+    pipeline_name: str  # Name of the pipeline that was executed
+    username: str  # Who initiated the run
+
+    # Pipeline info (optional)
+    pipeline_version: Optional[str] = None  # Version of the pipeline
+    project: str = "default"  # Project this run belongs to
+
+    # Provenance metadata (optional)
+    git_commit: Optional[str] = None  # Git commit hash at run time
+    model_names: Optional[List[str]] = None  # Models used in this run
+    config_hash: Optional[str] = None  # Hash of pipeline configuration
+
+    # Timing (optional)
+    started_at: Optional[datetime] = None  # When run started
+    finished_at: Optional[datetime] = None  # When run completed
+
+    # FAIR compliance
+    uri: Optional[str] = None  # Persistent URI
+
+    def __post_init__(self) -> None:
+        """Generate URI if not provided."""
+        if self.uri is None:
+            self.uri = f"{ARKHAI_NAMESPACE}/run/{self.id}"
+
+    def to_neo4j_properties(self) -> Dict[str, Any]:
+        """Convert to Neo4j node properties."""
+        props: Dict[str, Any] = {
+            "id": self.id,
+            "uri": self.uri,
+            "pipeline_name": self.pipeline_name,
+            "username": self.username,
+            "project": self.project,
+        }
+
+        if self.pipeline_version:
+            props["pipeline_version"] = self.pipeline_version
+        if self.git_commit:
+            props["git_commit"] = self.git_commit
+        if self.model_names:
+            # Neo4j supports lists natively
+            props["model_names"] = self.model_names
+        if self.config_hash:
+            props["config_hash"] = self.config_hash
+        if self.started_at:
+            props["started_at"] = self.started_at.isoformat()
+        if self.finished_at:
+            props["finished_at"] = self.finished_at.isoformat()
+
+        return props
+
+    @classmethod
+    def from_neo4j_node(cls, node: dict) -> "RunNode":
+        """Create RunNode from Neo4j node properties."""
+        started_at = None
+        if node.get("started_at"):
+            started_at = datetime.fromisoformat(node["started_at"])
+
+        finished_at = None
+        if node.get("finished_at"):
+            finished_at = datetime.fromisoformat(node["finished_at"])
+
+        return cls(
+            id=node["id"],
+            pipeline_name=node["pipeline_name"],
+            username=node.get("username", ""),
+            pipeline_version=node.get("pipeline_version"),
+            project=node.get("project", "default"),
+            git_commit=node.get("git_commit"),
+            model_names=node.get("model_names"),
+            config_hash=node.get("config_hash"),
+            started_at=started_at,
+            finished_at=finished_at,
+            uri=node.get("uri"),
+        )
+
+
+# =============================================================================
+# Data Content Nodes
+# =============================================================================
+
+
 @dataclass
 class DataPiece:
     """
@@ -198,18 +355,47 @@ class DataPiece:
 
     Used by InGate/OutGate to track data transformations and enable caching.
     Each unique piece of content gets one DataPiece node (deduplicated by fingerprint).
-    Content is stored on IPFS, only hash is stored in Neo4j.
+    Content is stored on Akave (S3-compatible), object key is stored in Neo4j.
+
+    Note: The field `ipfs_hash` is kept for backward compatibility with existing Neo4j
+    schemas but now stores Akave object keys instead of IPFS CIDs.
+
+    FAIR Compliance:
+        - `content_type`: Semantic type (Document, Chunk, Embedding, DataNode)
+        - `generated_by`: Run ID linking to provenance (PROV-O: prov:wasGeneratedBy)
+        - `uri`: Persistent URI for identification (F1-F3)
+
+    Example:
+        >>> piece = DataPiece(
+        ...     fingerprint="fp_abc123",
+        ...     ipfs_hash="ak_abc123...",  # Akave object key
+        ...     data_type="Document",
+        ...     username="alice",
+        ...     content_type=ContentType.DOCUMENT,
+        ...     generated_by="run_xyz789",
+        ... )
+        >>> piece.uri
+        'https://w3id.org/arkhai/doc/fp_abc123'
     """
 
     # Identity (required)
     fingerprint: str  # SHA256 hash of content (PRIMARY KEY)
 
     # Content storage (required)
-    ipfs_hash: str  # IPFS hash where actual content is stored
-    data_type: str  # "Document", "ByteStream", "List[Document]", etc.
+    ipfs_hash: str  # Akave object key (field name kept for Neo4j schema compatibility)
+    data_type: str  # Python type: "Document", "ByteStream", "List[Document]", etc.
 
     # Authorship (required)
     username: str  # Who created/owns this data
+
+    # FAIR compliance fields (optional, for semantic interoperability)
+    content_type: Optional[ContentType] = (
+        None  # Semantic type: Document | Chunk | Embedding | DataNode
+    )
+    generated_by: Optional[str] = None  # Run ID for provenance tracking
+    uri: Optional[str] = (
+        None  # Persistent URI: https://w3id.org/arkhai/doc/{fingerprint}
+    )
 
     # Metadata (optional)
     content_preview: Optional[str] = None  # First 200 chars for quick viewing
@@ -217,15 +403,29 @@ class DataPiece:
     created_at: Optional[datetime] = None  # When first created
     source: Optional[str] = None  # Original source (file path, URL, etc.)
 
+    def __post_init__(self) -> None:
+        """Generate URI if content_type is set but URI is not."""
+        if self.content_type is not None and self.uri is None:
+            self.uri = generate_uri(self.content_type, self.fingerprint)
+
     def to_neo4j_properties(self) -> Dict[str, Any]:
         """Convert to Neo4j node properties."""
         props: Dict[str, Any] = {
             "fingerprint": self.fingerprint,
             "ipfs_hash": self.ipfs_hash,
-            "type": self.data_type,
+            "type": self.data_type,  # Keep 'type' for backward compatibility
             "username": self.username,
         }
 
+        # FAIR compliance fields
+        if self.content_type is not None:
+            props["content_type"] = self.content_type.value
+        if self.generated_by:
+            props["generated_by"] = self.generated_by
+        if self.uri:
+            props["uri"] = self.uri
+
+        # Metadata
         if self.content_preview:
             props["content_preview"] = self.content_preview
         if self.size_bytes is not None:
@@ -238,11 +438,22 @@ class DataPiece:
     @classmethod
     def from_neo4j_node(cls, node: dict) -> "DataPiece":
         """Create DataPiece from Neo4j node properties."""
+        # Parse content_type enum if present
+        content_type = None
+        if node.get("content_type"):
+            try:
+                content_type = ContentType(node["content_type"])
+            except ValueError:
+                pass  # Unknown content type, leave as None
+
         return cls(
             fingerprint=node["fingerprint"],
             ipfs_hash=node["ipfs_hash"],
             data_type=node["type"],
             username=node["username"],
+            content_type=content_type,
+            generated_by=node.get("generated_by"),
+            uri=node.get("uri"),
             content_preview=node.get("content_preview"),
             size_bytes=node.get("size_bytes"),
             source=node.get("source"),

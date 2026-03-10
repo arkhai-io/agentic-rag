@@ -3,16 +3,32 @@
 ARCHITECTURE:
 - Factory: Build pipelines once and store in Neo4j (creation time)
 - Runner: Load pipelines from Neo4j and execute (runtime)
+
+FAIR Compliance:
+- Creates RunNode for each pipeline execution (provenance)
+- Links all generated DataPieces to the Run via GENERATED_BY
+- Stores run metadata: pipeline_name, started_at, finished_at, success
 """
 
+import hashlib
 import time
+import uuid
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from ..components import GraphStore
 from ..config import Config, get_config
 from ..types import PipelineUsage
+from ..types.node_types import ARKHAI_NAMESPACE
 from ..utils.logger import configure_haystack_logging, get_logger
 from ..utils.metrics import MetricsCollector
+
+
+def generate_run_id() -> str:
+    """Generate a unique run ID."""
+    unique = f"{datetime.utcnow().isoformat()}_{uuid.uuid4().hex[:8]}"
+    hash_obj = hashlib.sha256(unique.encode())
+    return f"run_{hash_obj.hexdigest()[:12]}"
 
 
 class PipelineRunner:
@@ -74,6 +90,106 @@ class PipelineRunner:
 
         self._initialized = True
         self.logger.info("PipelineRunner initialized (singleton)")
+
+    def _set_run_id_on_components(self, pipeline_name: str, run_id: str) -> None:
+        """
+        Set run_id on all GatedComponents in a pipeline for FAIR provenance.
+
+        Args:
+            pipeline_name: Name of the pipeline
+            run_id: Run ID to set on all components
+        """
+        from ..components.gates import GatedComponent
+
+        if pipeline_name not in self._haystack_components_by_pipeline:
+            return
+
+        components = self._haystack_components_by_pipeline[pipeline_name]
+        for comp_id, component in components.items():
+            if isinstance(component, GatedComponent):
+                component.set_run_id(run_id)
+                self.logger.debug(f"Set run_id={run_id} on component {comp_id}")
+
+    def _create_run_node(
+        self,
+        run_id: str,
+        pipeline_name: str,
+        username: str,
+        project: str,
+        pipeline_type: str,
+    ) -> None:
+        """
+        Create a RunNode in Neo4j for provenance tracking.
+
+        Args:
+            run_id: Unique run identifier
+            pipeline_name: Name of pipeline being run
+            username: User who initiated the run
+            project: Project name
+            pipeline_type: "indexing" or "retrieval"
+        """
+        started_at = datetime.utcnow().isoformat()
+        uri = f"{ARKHAI_NAMESPACE}/run/{run_id}"
+
+        self.graph_store.store_run_node(
+            run_id=run_id,
+            pipeline_name=pipeline_name,
+            username=username,
+            project=project,
+            started_at=started_at,
+            uri=uri,
+        )
+        self.logger.info(f"Created RunNode: {run_id} for pipeline {pipeline_name}")
+
+    async def _create_run_node_async(
+        self,
+        run_id: str,
+        pipeline_name: str,
+        username: str,
+        project: str,
+        pipeline_type: str,
+    ) -> None:
+        """Async version of _create_run_node."""
+        started_at = datetime.utcnow().isoformat()
+        uri = f"{ARKHAI_NAMESPACE}/run/{run_id}"
+
+        await self.graph_store.store_run_node_async(
+            run_id=run_id,
+            pipeline_name=pipeline_name,
+            username=username,
+            project=project,
+            started_at=started_at,
+            uri=uri,
+        )
+        self.logger.info(
+            f"Created RunNode (async): {run_id} for pipeline {pipeline_name}"
+        )
+
+    def _finalize_run_node(
+        self, run_id: str, success: bool, error: Optional[str] = None
+    ) -> None:
+        """Update RunNode with completion information."""
+        finished_at = datetime.utcnow().isoformat()
+        self.graph_store.update_run_finished(
+            run_id=run_id,
+            finished_at=finished_at,
+            success=success,
+            error=error,
+        )
+        self.logger.info(f"Finalized RunNode: {run_id} (success={success})")
+
+    async def _finalize_run_node_async(
+        self, run_id: str, success: bool, error: Optional[str] = None
+    ) -> None:
+        """Async version of _finalize_run_node."""
+        finished_at = datetime.utcnow().isoformat()
+        await self.graph_store.update_run_finished_async(
+            run_id=run_id,
+            finished_at=finished_at,
+            success=success,
+            error=error,
+        )
+        self.logger.info(f"Finalized RunNode (async): {run_id} (success={success})")
 
     @classmethod
     def reset_instance(cls) -> None:
@@ -463,10 +579,11 @@ class PipelineRunner:
                 else:
                     configured_spec = spec_copy
 
-                # Instantiate the actual Haystack component using registry cache
-                # This will return a cached instance if available (LRU)
-                # For writers/retrievers, it will handle document store creation
-                haystack_component = registry.get_component_instance(configured_spec)
+                # Instantiate a FRESH Haystack component (no caching)
+                # Haystack doesn't allow sharing component instances between pipelines
+                from ..components.registry import create_haystack_component
+
+                haystack_component = create_haystack_component(configured_spec)
 
                 # Optionally wrap with GatedComponent for caching
                 if self.enable_caching:
@@ -486,7 +603,7 @@ class PipelineRunner:
                             graph_store=self.graph_store,
                             username=username,
                             cache_key=cache_key,  # Use pipeline-agnostic cache key
-                            retrieve_from_ipfs=True,
+                            retrieve_from_storage=True,
                         )
                     else:
                         self.logger.debug(
@@ -1037,6 +1154,10 @@ class PipelineRunner:
 
         Returns:
             Indexing results
+
+        FAIR Compliance:
+            - Creates a RunNode for provenance tracking
+            - Links all generated DataPieces to the Run
         """
         from pathlib import Path
 
@@ -1046,6 +1167,9 @@ class PipelineRunner:
         start_time = time.time()
         success = False
         error_msg = None
+
+        # FAIR: Generate run ID and create RunNode
+        run_id = generate_run_id()
 
         try:
             # Get the pipeline
@@ -1082,7 +1206,21 @@ class PipelineRunner:
                         f"No supported files found in {data_path_obj}"
                     )
 
-            self.logger.info(f"Running indexing pipeline: {pipeline_name}")
+            # FAIR: Create RunNode before execution
+            if self.enable_caching:
+                self._create_run_node(
+                    run_id=run_id,
+                    pipeline_name=pipeline_name,
+                    username=username,
+                    project=project,
+                    pipeline_type="indexing",
+                )
+                # Set run_id on all GatedComponents
+                self._set_run_id_on_components(pipeline_name, run_id)
+
+            self.logger.info(
+                f"Running indexing pipeline: {pipeline_name} (run_id={run_id})"
+            )
             self.logger.info(f"Processing {len(input_files)} file(s)")
 
             # Run the pipeline with the file sources
@@ -1108,14 +1246,23 @@ class PipelineRunner:
                     "type": "indexing",
                     "files_processed": len(input_files),
                     "data_path": str(data_path_obj),
+                    "run_id": run_id,
                 },
             )
+
+            # FAIR: Finalize RunNode
+            if self.enable_caching:
+                self._finalize_run_node(run_id, success=True)
 
             return result
 
         except Exception as e:
             error_msg = str(e)
             success = False
+
+            # FAIR: Finalize RunNode with error
+            if self.enable_caching:
+                self._finalize_run_node(run_id, success=False, error=error_msg)
 
             # Log failed metrics
             end_time = time.time()
@@ -1129,7 +1276,7 @@ class PipelineRunner:
                 total_components=component_count,
                 success=success,
                 error=error_msg,
-                metadata={"type": "indexing"},
+                metadata={"type": "indexing", "run_id": run_id},
             )
 
             raise
@@ -1280,6 +1427,10 @@ class PipelineRunner:
         Async version of _run_indexing_pipeline.
 
         Executes indexing pipeline using AsyncPipeline.run_async().
+
+        FAIR Compliance:
+            - Creates a RunNode for provenance tracking
+            - Links all generated DataPieces to the Run
         """
         from pathlib import Path
 
@@ -1289,6 +1440,9 @@ class PipelineRunner:
         start_time = time.time()
         success = False
         error_msg = None
+
+        # FAIR: Generate run ID
+        run_id = generate_run_id()
 
         try:
             # Get the pipeline
@@ -1325,7 +1479,21 @@ class PipelineRunner:
                         f"No supported files found in {data_path_obj}"
                     )
 
-            self.logger.info(f"Running indexing pipeline (async): {pipeline_name}")
+            # FAIR: Create RunNode before execution
+            if self.enable_caching:
+                await self._create_run_node_async(
+                    run_id=run_id,
+                    pipeline_name=pipeline_name,
+                    username=username,
+                    project=project,
+                    pipeline_type="indexing",
+                )
+                # Set run_id on all GatedComponents
+                self._set_run_id_on_components(pipeline_name, run_id)
+
+            self.logger.info(
+                f"Running indexing pipeline (async): {pipeline_name} (run_id={run_id})"
+            )
             self.logger.info(f"Processing {len(input_files)} file(s)")
 
             # Run the pipeline with the file sources
@@ -1353,14 +1521,25 @@ class PipelineRunner:
                     "files_processed": len(input_files),
                     "data_path": str(data_path_obj),
                     "mode": "async",
+                    "run_id": run_id,
                 },
             )
+
+            # FAIR: Finalize RunNode
+            if self.enable_caching:
+                await self._finalize_run_node_async(run_id, success=True)
 
             return result
 
         except Exception as e:
             error_msg = str(e)
             success = False
+
+            # FAIR: Finalize RunNode with error
+            if self.enable_caching:
+                await self._finalize_run_node_async(
+                    run_id, success=False, error=error_msg
+                )
 
             # Log failed metrics
             end_time = time.time()
@@ -1374,7 +1553,7 @@ class PipelineRunner:
                 total_components=component_count,
                 success=success,
                 error=error_msg,
-                metadata={"type": "indexing", "mode": "async"},
+                metadata={"type": "indexing", "mode": "async", "run_id": run_id},
             )
 
             raise

@@ -1,15 +1,47 @@
-"""Generic wrapper that adds caching gates to any Haystack component."""
+"""Generic wrapper that adds caching gates to any Haystack component.
+
+FAIR Compliance:
+- Supports content_type from ComponentSpec registry
+- Supports run_id for provenance tracking
+- Passes FAIR fields through to OutGate for storage
+"""
 
 import asyncio
 import contextvars
 import time
 from typing import Any, Dict, List, Optional
 
+from ...types.node_types import ContentType
 from ...utils.logger import get_logger
 from ...utils.metrics import MetricsCollector
 from ..neo4j_manager import GraphStore
 from .ingate import InGate
 from .outgate import OutGate
+
+
+def get_content_type_from_registry(component_name: str) -> Optional[ContentType]:
+    """
+    Get the FAIR content_type from the component registry.
+
+    Args:
+        component_name: Name of the component (e.g., "markdown_aware_chunker")
+
+    Returns:
+        ContentType enum value or None if not found/specified
+    """
+    from ..registry import get_default_registry
+
+    registry = get_default_registry()
+    spec = registry.get_component_spec(component_name)
+
+    if spec and spec.produces_content_type:
+        try:
+            return ContentType(spec.produces_content_type)
+        except ValueError:
+            pass
+
+    # Fallback to None if not in registry or not specified
+    return None
 
 
 class GatedComponent:
@@ -52,7 +84,9 @@ class GatedComponent:
         graph_store: GraphStore,
         username: str,
         cache_key: Optional[str] = None,
-        retrieve_from_ipfs: bool = True,
+        retrieve_from_storage: bool = True,
+        run_id: Optional[str] = None,
+        content_type: Optional[ContentType] = None,
     ):
         """
         Initialize gated component wrapper.
@@ -64,7 +98,9 @@ class GatedComponent:
             graph_store: Neo4j graph store
             username: User who owns this pipeline/data
             cache_key: Pipeline-agnostic cache key for cache lookups
-            retrieve_from_ipfs: If True, retrieves cached data from IPFS (default: False)
+            retrieve_from_storage: If True, retrieves cached data from Akave (default: False)
+            run_id: FAIR provenance - Run ID to link all outputs to
+            content_type: FAIR semantic type (auto-inferred from component_name if not provided)
         """
         self.component = component
         self.component_id = component_id
@@ -77,13 +113,20 @@ class GatedComponent:
         self.logger = get_logger(f"{__name__}.{component_name}", username=username)
         self.metrics = MetricsCollector(username=username)
 
-        # Create gates with IPFS retrieval enabled (use cache_key for lookups)
+        # FAIR compliance fields
+        self.run_id = run_id
+        # Get content_type from registry if not provided
+        self.content_type = content_type or get_content_type_from_registry(
+            component_name
+        )
+
+        # Create gates with storage retrieval enabled (use cache_key for lookups)
         self.ingate = InGate(
             graph_store=graph_store,
             component_id=self.cache_key,  # Use cache_key for lookups
             component_name=component_name,
             username=username,
-            retrieve_from_ipfs=True,  # Always retrieve from IPFS for cached results
+            retrieve_from_storage=True,  # Always retrieve from Akave for cached results
         )
 
         self.outgate = OutGate(
@@ -92,6 +135,17 @@ class GatedComponent:
             component_name=component_name,
             username=username,
         )
+
+    def set_run_id(self, run_id: str) -> None:
+        """
+        Set the run_id for FAIR provenance tracking.
+
+        This can be called after construction to link outputs to a specific Run.
+
+        Args:
+            run_id: The Run ID to link all outputs to
+        """
+        self.run_id = run_id
 
     def run(self, **kwargs: Any) -> Dict[str, Any]:
         """
@@ -173,11 +227,14 @@ class GatedComponent:
                     single_output_items = self._extract_output_data(single_output)
 
                     # Store: input → its outputs (handles both 1→1 and 1→N)
+                    # Include FAIR compliance fields
                     if single_output_items:
                         self.outgate.store(
                             input_data=input_item,
                             output_data=single_output_items,
                             component_config=component_config,
+                            content_type=self.content_type,
+                            run_id=self.run_id,
                         )
                 except Exception as e:
                     self.logger.warning(f"Failed to cache item: {e}")
@@ -316,11 +373,14 @@ class GatedComponent:
                     single_output_items = self._extract_output_data(single_output)
 
                     # Store: input → its outputs (handles both 1→1 and 1→N) - use async version
+                    # Include FAIR compliance fields
                     if single_output_items:
                         await self.outgate.store_async(
                             input_data=input_item,
                             output_data=single_output_items,
                             component_config=component_config,
+                            content_type=self.content_type,
+                            run_id=self.run_id,
                         )
                 except Exception as e:
                     self.logger.warning(f"Failed to cache item: {e}")

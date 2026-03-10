@@ -29,7 +29,9 @@ def test_config():
         neo4j_password=os.getenv("NEO4J_PASSWORD", "test_password"),
         neo4j_database=os.getenv("NEO4J_DATABASE"),
         openrouter_api_key=os.getenv("OPENROUTER_API_KEY", "test_openrouter_key"),
-        lighthouse_api_key=os.getenv("LIGHTHOUSE_API_KEY", "test_lighthouse_key"),
+        akave_access_key=os.getenv("AKAVE_ACCESS_KEY", "test_akave_access_key"),
+        akave_secret_key=os.getenv("AKAVE_SECRET_KEY", "test_akave_secret_key"),
+        akave_bucket=os.getenv("AKAVE_BUCKET", "test-bucket"),
         log_level="DEBUG",
     )
 

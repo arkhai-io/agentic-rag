@@ -44,10 +44,10 @@ def mock_graph_store():
 
 
 @pytest.fixture
-def mock_lighthouse_client():
-    """Create a mock Lighthouse IPFS client."""
+def mock_storage_client():
+    """Create a mock Akave storage client."""
     client = Mock()
-    client.upload_any.return_value = {"Hash": "QmTestHash123", "Size": "100"}
+    client.upload_any.return_value = {"Hash": "ak_test_hash_123", "Size": "100"}
     client.retrieve_text.return_value = "cached content"
     return client
 
@@ -79,19 +79,19 @@ def mock_outgate():
 
 
 @pytest.mark.asyncio
-@patch("agentic_rag.components.gates.ingate.LighthouseClient")
-@patch("agentic_rag.components.gates.outgate.LighthouseClient")
+@patch("agentic_rag.components.gates.ingate.AkaveClient")
+@patch("agentic_rag.components.gates.outgate.AkaveClient")
 async def test_run_async_with_async_component(
-    mock_outgate_lighthouse,
-    mock_ingate_lighthouse,
+    mock_outgate_storage,
+    mock_ingate_storage,
     mock_graph_store,
     mock_ingate,
     mock_outgate,
-    mock_lighthouse_client,
+    mock_storage_client,
 ):
     """Test run_async with a component that has run_async method."""
-    mock_ingate_lighthouse.return_value = mock_lighthouse_client
-    mock_outgate_lighthouse.return_value = mock_lighthouse_client
+    mock_ingate_storage.return_value = mock_storage_client
+    mock_outgate_storage.return_value = mock_storage_client
 
     component = MockAsyncComponent()
     gated = GatedComponent(
@@ -118,19 +118,19 @@ async def test_run_async_with_async_component(
 
 
 @pytest.mark.asyncio
-@patch("agentic_rag.components.gates.ingate.LighthouseClient")
-@patch("agentic_rag.components.gates.outgate.LighthouseClient")
+@patch("agentic_rag.components.gates.ingate.AkaveClient")
+@patch("agentic_rag.components.gates.outgate.AkaveClient")
 async def test_run_async_with_sync_component(
-    mock_outgate_lighthouse,
-    mock_ingate_lighthouse,
+    mock_outgate_storage,
+    mock_ingate_storage,
     mock_graph_store,
     mock_ingate,
     mock_outgate,
-    mock_lighthouse_client,
+    mock_storage_client,
 ):
     """Test run_async with a component that only has sync run method."""
-    mock_ingate_lighthouse.return_value = mock_lighthouse_client
-    mock_outgate_lighthouse.return_value = mock_lighthouse_client
+    mock_ingate_storage.return_value = mock_storage_client
+    mock_outgate_storage.return_value = mock_storage_client
 
     component = MockComponent()
     gated = GatedComponent(
@@ -157,17 +157,17 @@ async def test_run_async_with_sync_component(
 
 
 @pytest.mark.asyncio
-@patch("agentic_rag.components.gates.ingate.LighthouseClient")
-@patch("agentic_rag.components.gates.outgate.LighthouseClient")
+@patch("agentic_rag.components.gates.ingate.AkaveClient")
+@patch("agentic_rag.components.gates.outgate.AkaveClient")
 async def test_run_async_with_cached_items(
-    mock_outgate_lighthouse,
-    mock_ingate_lighthouse,
+    mock_outgate_storage,
+    mock_ingate_storage,
     mock_graph_store,
-    mock_lighthouse_client,
+    mock_storage_client,
 ):
     """Test run_async when all items are in cache."""
-    mock_ingate_lighthouse.return_value = mock_lighthouse_client
-    mock_outgate_lighthouse.return_value = mock_lighthouse_client
+    mock_ingate_storage.return_value = mock_storage_client
+    mock_outgate_storage.return_value = mock_storage_client
 
     component = MockAsyncComponent()
     gated = GatedComponent(
@@ -200,18 +200,18 @@ async def test_run_async_with_cached_items(
 
 
 @pytest.mark.asyncio
-@patch("agentic_rag.components.gates.ingate.LighthouseClient")
-@patch("agentic_rag.components.gates.outgate.LighthouseClient")
+@patch("agentic_rag.components.gates.ingate.AkaveClient")
+@patch("agentic_rag.components.gates.outgate.AkaveClient")
 async def test_run_async_partial_cache(
-    mock_outgate_lighthouse,
-    mock_ingate_lighthouse,
+    mock_outgate_storage,
+    mock_ingate_storage,
     mock_graph_store,
     mock_outgate,
-    mock_lighthouse_client,
+    mock_storage_client,
 ):
     """Test run_async with partial cache hits."""
-    mock_ingate_lighthouse.return_value = mock_lighthouse_client
-    mock_outgate_lighthouse.return_value = mock_lighthouse_client
+    mock_ingate_storage.return_value = mock_storage_client
+    mock_outgate_storage.return_value = mock_storage_client
 
     component = MockAsyncComponent()
     gated = GatedComponent(
@@ -242,17 +242,17 @@ async def test_run_async_partial_cache(
 
 
 @pytest.mark.asyncio
-@patch("agentic_rag.components.gates.ingate.LighthouseClient")
-@patch("agentic_rag.components.gates.outgate.LighthouseClient")
+@patch("agentic_rag.components.gates.ingate.AkaveClient")
+@patch("agentic_rag.components.gates.outgate.AkaveClient")
 async def test_run_async_no_cacheable_inputs(
-    mock_outgate_lighthouse,
-    mock_ingate_lighthouse,
+    mock_outgate_storage,
+    mock_ingate_storage,
     mock_graph_store,
-    mock_lighthouse_client,
+    mock_storage_client,
 ):
     """Test run_async with no cacheable inputs."""
-    mock_ingate_lighthouse.return_value = mock_lighthouse_client
-    mock_outgate_lighthouse.return_value = mock_lighthouse_client
+    mock_ingate_storage.return_value = mock_storage_client
+    mock_outgate_storage.return_value = mock_storage_client
 
     component = MockAsyncComponent()
     gated = GatedComponent(
@@ -271,18 +271,18 @@ async def test_run_async_no_cacheable_inputs(
 
 
 @pytest.mark.asyncio
-@patch("agentic_rag.components.gates.ingate.LighthouseClient")
-@patch("agentic_rag.components.gates.outgate.LighthouseClient")
+@patch("agentic_rag.components.gates.ingate.AkaveClient")
+@patch("agentic_rag.components.gates.outgate.AkaveClient")
 async def test_run_async_error_handling(
-    mock_outgate_lighthouse,
-    mock_ingate_lighthouse,
+    mock_outgate_storage,
+    mock_ingate_storage,
     mock_graph_store,
     mock_ingate,
-    mock_lighthouse_client,
+    mock_storage_client,
 ):
     """Test run_async handles errors gracefully."""
-    mock_ingate_lighthouse.return_value = mock_lighthouse_client
-    mock_outgate_lighthouse.return_value = mock_lighthouse_client
+    mock_ingate_storage.return_value = mock_storage_client
+    mock_outgate_storage.return_value = mock_storage_client
 
     class FailingComponent:
         __haystack_supports_async__ = True
@@ -307,19 +307,19 @@ async def test_run_async_error_handling(
         await gated.run_async(documents=["doc1"])
 
 
-@patch("agentic_rag.components.gates.ingate.LighthouseClient")
-@patch("agentic_rag.components.gates.outgate.LighthouseClient")
+@patch("agentic_rag.components.gates.ingate.AkaveClient")
+@patch("agentic_rag.components.gates.outgate.AkaveClient")
 def test_sync_run_still_works(
-    mock_outgate_lighthouse,
-    mock_ingate_lighthouse,
+    mock_outgate_storage,
+    mock_ingate_storage,
     mock_graph_store,
     mock_ingate,
     mock_outgate,
-    mock_lighthouse_client,
+    mock_storage_client,
 ):
     """Test that sync run method still works after adding async."""
-    mock_ingate_lighthouse.return_value = mock_lighthouse_client
-    mock_outgate_lighthouse.return_value = mock_lighthouse_client
+    mock_ingate_storage.return_value = mock_storage_client
+    mock_outgate_storage.return_value = mock_storage_client
 
     component = MockComponent()
     gated = GatedComponent(

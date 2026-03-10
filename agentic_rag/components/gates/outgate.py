@@ -4,13 +4,19 @@ Simple flow:
 1. Upload data to IPFS → get IPFS hash
 2. Create DataPiece nodes in Neo4j
 3. Create TRANSFORMED_BY edges connecting them
+
+FAIR Compliance:
+- Supports content_type for semantic typing (Document, Chunk, Embedding)
+- Supports run_id for provenance tracking (links to RunNode)
+- Generates persistent URIs for each DataPiece
 """
 
 import hashlib
 import json
 from typing import Any, Dict, List, Optional
 
-from ...utils.ipfs_client import LighthouseClient
+from ...types.node_types import ContentType, generate_uri
+from ...utils.akave_client import AkaveClient
 from ...utils.logger import get_logger
 from ..neo4j_manager import GraphStore
 
@@ -21,11 +27,11 @@ class OutGate:
 
     Simple responsibilities:
     - Upload data to IPFS (placeholder)
-    - Create DataPiece nodes with IPFS hashes
+    - Create DataPiece nodes with Akave object keys
     - Create TRANSFORMED_BY edges (input → output)
 
     Flow:
-        Output → [Upload to IPFS] → [Create DataPiece] → [Create TRANSFORMED_BY edge]
+        Output → [Upload to Akave] → [Create DataPiece] → [Create TRANSFORMED_BY edge]
     """
 
     def __init__(
@@ -34,7 +40,7 @@ class OutGate:
         component_id: str,
         component_name: str,
         username: str,
-        ipfs_client: Optional[LighthouseClient] = None,
+        storage_client: Optional[AkaveClient] = None,
     ):
         """
         Initialize OutGate.
@@ -44,13 +50,13 @@ class OutGate:
             component_id: Component doing the transformation
             component_name: Human-readable name
             username: Data owner
-            ipfs_client: Optional Lighthouse IPFS client (creates one if not provided)
+            storage_client: Optional Akave storage client (creates one if not provided)
         """
         self.graph_store = graph_store
         self.component_id = component_id
         self.component_name = component_name
         self.username = username
-        self.ipfs_client = ipfs_client or LighthouseClient()
+        self.storage_client = storage_client or AkaveClient()
         self.logger = get_logger(f"{__name__}.{component_name}", username=username)
 
     def store(
@@ -59,6 +65,8 @@ class OutGate:
         output_data: List[Any],
         component_config: Dict[str, Any],
         processing_time_ms: Optional[int] = None,
+        content_type: Optional[ContentType] = None,
+        run_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Store transformation: input → component → outputs.
@@ -76,6 +84,8 @@ class OutGate:
             output_data: List of outputs (even if just one)
             component_config: Component configuration
             processing_time_ms: Processing time
+            content_type: FAIR semantic type (Document, Chunk, Embedding, DataNode)
+            run_id: FAIR provenance - links outputs to a Run node
 
         Returns:
             {
@@ -85,8 +95,12 @@ class OutGate:
             }
 
         Example:
-            >>> # Single output
-            >>> outgate.store(markdown, [chunk], config)
+            >>> # Single output with FAIR metadata
+            >>> outgate.store(
+            ...     markdown, [chunk], config,
+            ...     content_type=ContentType.CHUNK,
+            ...     run_id="run_abc123"
+            ... )
 
             >>> # Multiple outputs
             >>> outgate.store(markdown, [chunk1, chunk2, chunk3], config)
@@ -97,25 +111,48 @@ class OutGate:
         # Fingerprint input
         input_fingerprint = self.fingerprint_data(input_data)
 
-        # Process all outputs in batch
+        # Batch upload all outputs to Akave in parallel using ThreadPoolExecutor
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
         output_records = []
-        for output_item in output_data:
-            # Upload to IPFS
-            ipfs_hash = self._upload_to_ipfs(output_item)
 
-            # Fingerprint output
+        # Prepare data for parallel upload
+        upload_tasks = []
+        for idx, output_item in enumerate(output_data):
             output_fingerprint = self.fingerprint_data(output_item)
-
-            # Detect data type
             data_type = type(output_item).__name__
-
-            output_records.append(
+            upload_tasks.append(
                 {
+                    "idx": idx,
+                    "item": output_item,
                     "fingerprint": output_fingerprint,
-                    "ipfs_hash": ipfs_hash,
                     "data_type": data_type,
                 }
             )
+
+        # Upload in parallel (max 10 concurrent uploads)
+        with ThreadPoolExecutor(max_workers=min(10, len(upload_tasks))) as executor:
+            future_to_task = {
+                executor.submit(self._upload_to_storage, task["item"]): task
+                for task in upload_tasks
+            }
+
+            for future in as_completed(future_to_task):
+                task = future_to_task[future]
+                object_key = future.result()
+
+                record: Dict[str, Any] = {
+                    "fingerprint": task["fingerprint"],
+                    "ipfs_hash": object_key,
+                    "data_type": task["data_type"],
+                }
+
+                # Add FAIR compliance fields if provided
+                if content_type is not None:
+                    record["content_type"] = content_type.value
+                    record["uri"] = generate_uri(content_type, task["fingerprint"])
+
+                output_records.append(record)
 
         # Store everything to Neo4j in one batch
         self.logger.info(
@@ -127,7 +164,7 @@ class OutGate:
         )
         self.graph_store.store_transformation_batch(
             input_fingerprint=input_fingerprint,
-            input_ipfs_hash=self._upload_to_ipfs(input_data),
+            input_ipfs_hash=self._upload_to_storage(input_data),
             input_data_type=type(input_data).__name__,
             output_records=output_records,
             component_id=self.component_id,
@@ -135,6 +172,7 @@ class OutGate:
             config_hash=config_hash,
             username=self.username,
             processing_time_ms=processing_time_ms,
+            run_id=run_id,
         )
 
         self.logger.debug(
@@ -153,6 +191,8 @@ class OutGate:
         output_data: List[Any],
         component_config: Dict[str, Any],
         processing_time_ms: Optional[int] = None,
+        content_type: Optional[ContentType] = None,
+        run_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Async version of store.
@@ -164,6 +204,8 @@ class OutGate:
             output_data: List of outputs (even if just one)
             component_config: Component configuration
             processing_time_ms: Processing time
+            content_type: FAIR semantic type (Document, Chunk, Embedding, DataNode)
+            run_id: FAIR provenance - links outputs to a Run node
 
         Returns:
             {
@@ -172,31 +214,45 @@ class OutGate:
                 "output_ipfs_hashes": List[str]
             }
         """
+        import asyncio
+
         # Hash config
         config_hash = self.hash_config(component_config)
 
         # Fingerprint input
         input_fingerprint = self.fingerprint_data(input_data)
 
-        # Process all outputs in batch
-        output_records = []
+        # Prepare metadata for all outputs
+        output_metadata = []
         for output_item in output_data:
-            # Upload to IPFS (async)
-            ipfs_hash = await self._upload_to_ipfs_async(output_item)
-
-            # Fingerprint output
             output_fingerprint = self.fingerprint_data(output_item)
-
-            # Detect data type
             data_type = type(output_item).__name__
-
-            output_records.append(
+            output_metadata.append(
                 {
+                    "item": output_item,
                     "fingerprint": output_fingerprint,
-                    "ipfs_hash": ipfs_hash,
                     "data_type": data_type,
                 }
             )
+
+        # Batch upload all outputs to Akave in parallel using asyncio.gather
+        async def upload_with_metadata(meta: dict) -> dict:
+            object_key = await self._upload_to_storage_async(meta["item"])
+            record: Dict[str, Any] = {
+                "fingerprint": meta["fingerprint"],
+                "ipfs_hash": object_key,
+                "data_type": meta["data_type"],
+            }
+            if content_type is not None:
+                record["content_type"] = content_type.value
+                record["uri"] = generate_uri(content_type, meta["fingerprint"])
+            return record
+
+        # Upload all in parallel
+        output_records = await asyncio.gather(
+            *[upload_with_metadata(meta) for meta in output_metadata]
+        )
+        output_records = list(output_records)
 
         # Store everything to Neo4j in one batch (async)
         self.logger.info(
@@ -208,7 +264,7 @@ class OutGate:
         )
         await self.graph_store.store_transformation_batch_async(
             input_fingerprint=input_fingerprint,
-            input_ipfs_hash=await self._upload_to_ipfs_async(input_data),
+            input_ipfs_hash=await self._upload_to_storage_async(input_data),
             input_data_type=type(input_data).__name__,
             output_records=output_records,
             component_id=self.component_id,
@@ -216,6 +272,7 @@ class OutGate:
             config_hash=config_hash,
             username=self.username,
             processing_time_ms=processing_time_ms,
+            run_id=run_id,
         )
 
         self.logger.debug(
@@ -258,49 +315,49 @@ class OutGate:
         hash_obj = hashlib.sha256(config_str.encode("utf-8"))
         return f"cfg_{hash_obj.hexdigest()[:16]}"
 
-    def _upload_to_ipfs(self, data: Any) -> str:
+    def _upload_to_storage(self, data: Any) -> str:
         """
-        Upload data to IPFS via Lighthouse and return CID.
+        Upload data to Akave and return object key.
 
         Args:
             data: Any data type (Document, dict, str, bytes, etc.)
 
         Returns:
-            IPFS CID (hash)
+            Object key (stored as ipfs_hash for Neo4j compatibility)
         """
         try:
-            result = self.ipfs_client.upload_any(data)
-            ipfs_hash: str = result["Hash"]
+            result = self.storage_client.upload_any(data)
+            object_key: str = result["Hash"]
             self.logger.debug(
-                f"IPFS upload successful: CID={ipfs_hash}, Size={result.get('Size', 'unknown')}"
+                f"Akave upload successful: key={object_key}, Size={result.get('Size', 'unknown')}"
             )
-            return ipfs_hash
+            return object_key
         except Exception as e:
-            self.logger.error(f"IPFS upload failed: {type(e).__name__}: {str(e)}")
+            self.logger.error(f"Akave upload failed: {type(e).__name__}: {str(e)}")
             raise
 
-    async def _upload_to_ipfs_async(self, data: Any) -> str:
+    async def _upload_to_storage_async(self, data: Any) -> str:
         """
-        Async version of _upload_to_ipfs.
+        Async version of _upload_to_storage.
 
-        Upload data to IPFS via Lighthouse and return CID.
+        Upload data to Akave and return object key.
 
         Args:
             data: Any data type (Document, dict, str, bytes, etc.)
 
         Returns:
-            IPFS CID (hash)
+            Object key (stored as ipfs_hash for Neo4j compatibility)
         """
         try:
-            result = await self.ipfs_client.upload_any_async(data)
-            ipfs_hash: str = result["Hash"]
+            result = await self.storage_client.upload_any_async(data)
+            object_key: str = result["Hash"]
             self.logger.debug(
-                f"IPFS upload successful (async): CID={ipfs_hash}, Size={result.get('Size', 'unknown')}"
+                f"Akave upload successful (async): key={object_key}, Size={result.get('Size', 'unknown')}"
             )
-            return ipfs_hash
+            return object_key
         except Exception as e:
             self.logger.error(
-                f"IPFS upload failed (async): {type(e).__name__}: {str(e)}"
+                f"Akave upload failed (async): {type(e).__name__}: {str(e)}"
             )
             raise
 

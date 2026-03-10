@@ -26,14 +26,18 @@ from .graph_relationships import (
     get_relationship_name,
     get_safe_relationship_name,
 )
-from .node_types import (
+from .node_types import (  # Core node types; FAIR compliance types; FAIR compliance utilities
+    ARKHAI_NAMESPACE,
     ComponentNode,
     ComponentRelationship,
+    ContentType,
     DataPiece,
     ProcessedByRelationship,
     ProjectNode,
+    RunNode,
     TransformedByRelationship,
     UserNode,
+    generate_uri,
 )
 from .pipeline_spec import PipelineSpec, PipelineType
 
@@ -54,6 +58,11 @@ __all__ = [
     "DataPiece",
     "TransformedByRelationship",
     "ProcessedByRelationship",
+    # FAIR compliance types
+    "ContentType",
+    "RunNode",
+    "ARKHAI_NAMESPACE",
+    "generate_uri",
     # Component enums
     "CONVERTER",
     "CHUNKER",

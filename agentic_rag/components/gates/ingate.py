@@ -8,7 +8,7 @@ import hashlib
 import json
 from typing import Any, Dict, List, Optional
 
-from ...utils.ipfs_client import LighthouseClient
+from ...utils.akave_client import AkaveClient
 from ...utils.logger import get_logger
 from ..neo4j_manager import GraphStore
 
@@ -35,8 +35,8 @@ class InGate:
         component_id: str,
         component_name: str,
         username: Optional[str] = None,
-        ipfs_client: Optional[LighthouseClient] = None,
-        retrieve_from_ipfs: bool = False,
+        storage_client: Optional[AkaveClient] = None,
+        retrieve_from_storage: bool = False,
     ):
         """
         Initialize InGate.
@@ -46,14 +46,14 @@ class InGate:
             component_id: Unique ID of the component this gate protects
             component_name: Human-readable component name
             username: Username for per-user logging
-            ipfs_client: Optional Lighthouse IPFS client (creates one if not provided)
-            retrieve_from_ipfs: If True, retrieves actual data from IPFS (default: False, returns metadata only)
+            storage_client: Optional Akave storage client (creates one if not provided)
+            retrieve_from_storage: If True, retrieves actual data from storage (default: False, returns metadata only)
         """
         self.graph_store = graph_store
         self.component_id = component_id
         self.component_name = component_name
-        self.ipfs_client = ipfs_client or LighthouseClient()
-        self.retrieve_from_ipfs = retrieve_from_ipfs
+        self.storage_client = storage_client or AkaveClient()
+        self.retrieve_from_storage = retrieve_from_storage
         self.logger = get_logger(f"{__name__}.{component_name}", username=username)
 
     def check_cache_batch(
@@ -77,8 +77,8 @@ class InGate:
             }
 
             cached_result format:
-            - If retrieve_from_ipfs=False: List[{fingerprint, ipfs_hash, data_type}]
-            - If retrieve_from_ipfs=True: List of actual data retrieved from IPFS
+            - If retrieve_from_storage=False: List[{fingerprint, object_key, data_type}]
+            - If retrieve_from_storage=True: List of actual data retrieved from storage
 
         Example (batch):
             >>> result = ingate.check_cache_batch(
@@ -128,22 +128,24 @@ class InGate:
                 # Found cached result
                 cached_metadata = cache_map[fp]
 
-                if self.retrieve_from_ipfs:
+                if self.retrieve_from_storage:
                     try:
                         cached_data = []
                         for output_meta in cached_metadata:
-                            ipfs_hash = output_meta["ipfs_hash"]
+                            object_key = output_meta[
+                                "ipfs_hash"
+                            ]  # Field name kept for Neo4j compat
                             data_type = output_meta.get("data_type")
-                            data = self._retrieve_from_ipfs(ipfs_hash, data_type)
+                            data = self._retrieve_from_storage(object_key, data_type)
                             cached_data.append(data)
                         cached.append((item, cached_data))
                         cache_hits += 1
                     except (ConnectionError, Exception) as e:
-                        # IPFS retrieval failed - treat as cache miss
-                        self.logger.warning(f"IPFS retrieval failed for {fp}: {e}")
+                        # Storage retrieval failed - treat as cache miss
+                        self.logger.warning(f"Storage retrieval failed for {fp}: {e}")
                         uncached.append(item)
                 else:
-                    # Just return metadata (fingerprints + IPFS hashes)
+                    # Just return metadata (fingerprints + object keys)
                     cached.append((item, cached_metadata))
                     cache_hits += 1
             else:
@@ -213,24 +215,26 @@ class InGate:
                 # Found cached result
                 cached_metadata = cache_map[fp]
 
-                if self.retrieve_from_ipfs:
+                if self.retrieve_from_storage:
                     try:
                         cached_data = []
                         for output_meta in cached_metadata:
-                            ipfs_hash = output_meta["ipfs_hash"]
+                            object_key = output_meta[
+                                "ipfs_hash"
+                            ]  # Field name kept for Neo4j compat
                             data_type = output_meta.get("data_type")
-                            data = await self._retrieve_from_ipfs_async(
-                                ipfs_hash, data_type
+                            data = await self._retrieve_from_storage_async(
+                                object_key, data_type
                             )
                             cached_data.append(data)
                         cached.append((item, cached_data))
                         cache_hits += 1
                     except (ConnectionError, Exception) as e:
-                        # IPFS retrieval failed - treat as cache miss
-                        self.logger.warning(f"IPFS retrieval failed for {fp}: {e}")
+                        # Storage retrieval failed - treat as cache miss
+                        self.logger.warning(f"Storage retrieval failed for {fp}: {e}")
                         uncached.append(item)
                 else:
-                    # Just return metadata (fingerprints + IPFS hashes)
+                    # Just return metadata (fingerprints + object keys)
                     cached.append((item, cached_metadata))
                     cache_hits += 1
             else:
@@ -308,22 +312,52 @@ class InGate:
         hash_obj = hashlib.sha256(config_str.encode("utf-8"))
         return f"cfg_{hash_obj.hexdigest()[:16]}"
 
-    def _retrieve_from_ipfs(
-        self, ipfs_hash: str, data_type: Optional[str] = None
+    def _retrieve_from_storage(
+        self, object_key: str, data_type: Optional[str] = None
     ) -> Any:
-        """Retrieve from IPFS and reconstruct as Document."""
+        """Retrieve from Akave storage and reconstruct as Document."""
         from haystack import Document
 
-        text = self.ipfs_client.retrieve_text(ipfs_hash)
+        # Try to retrieve as JSON first (may contain embedding)
+        try:
+            data = self.storage_client.retrieve_json(object_key)
+            if isinstance(data, dict) and "content" in data:
+                # Reconstruct Document with all fields
+                return Document(
+                    content=data.get("content", ""),
+                    meta=data.get("meta", {}),
+                    id=data.get("id"),
+                    embedding=data.get("embedding"),  # May be None or list
+                )
+        except Exception:
+            pass
+
+        # Fallback: retrieve as text
+        text = self.storage_client.retrieve_text(object_key)
         return Document(content=text)
 
-    async def _retrieve_from_ipfs_async(
-        self, ipfs_hash: str, data_type: Optional[str] = None
+    async def _retrieve_from_storage_async(
+        self, object_key: str, data_type: Optional[str] = None
     ) -> Any:
-        """Async version of _retrieve_from_ipfs."""
+        """Async version of _retrieve_from_storage."""
         from haystack import Document
 
-        text = await self.ipfs_client.retrieve_text_async(ipfs_hash)
+        # Try to retrieve as JSON first (may contain embedding)
+        try:
+            data = await self.storage_client.retrieve_json_async(object_key)
+            if isinstance(data, dict) and "content" in data:
+                # Reconstruct Document with all fields
+                return Document(
+                    content=data.get("content", ""),
+                    meta=data.get("meta", {}),
+                    id=data.get("id"),
+                    embedding=data.get("embedding"),  # May be None or list
+                )
+        except Exception:
+            pass
+
+        # Fallback: retrieve as text
+        text = await self.storage_client.retrieve_text_async(object_key)
         return Document(content=text)
 
     def _serialize_for_fingerprint(self, data: Any) -> str:
